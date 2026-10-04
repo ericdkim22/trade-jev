@@ -8,7 +8,7 @@
   try { if (localStorage.getItem("jev-viewer-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
 </script>
 <title>Jev Run Viewer</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 :root {
   color-scheme: light;
@@ -54,6 +54,10 @@ button, select, input[type=text] { font: inherit; }
 .chip.loading { opacity: .6; }
 .row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .pos { color: var(--good); } .neg { color: var(--bad); }
+.nav { display: flex; gap: 4px; align-self: center; }
+.nav a { color: var(--ink-2); text-decoration: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 10px; font-size: 13px; }
+.nav a:hover { background: var(--wash); }
+.nav a[aria-current="page"] { color: var(--ink); border-color: var(--ring); background: var(--surface); font-weight: 600; }
 
 /* runs */
 .runs { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -137,6 +141,7 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 u
 <main class="stack">
   <header>
     <h1>Jev Run Viewer</h1>
+    <nav class="nav"><a href="/" aria-current="page">Replay</a><a href="/live">Live</a><a href="/docs">Docs</a></nav>
     <span class="sub">run once → replay any settings → compare</span>
     <span class="muted" id="status" style="margin-left:auto"></span>
     <button class="btn" id="theme" aria-label="Toggle dark mode"></button>

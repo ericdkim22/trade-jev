@@ -9,16 +9,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import csv
-import json
 import time
-from dataclasses import asdict, fields
+from dataclasses import fields
 from datetime import datetime
 
 from trade_jev import ROOT
 from trade_jev.data import decision_grid, list_days, load_day
-from trade_jev.harness import Config, DayResult, Trade, equity_curve, run_day
-from trade_jev.metrics import summarize
+from trade_jev.harness import Config, DayResult, run_day
+from trade_jev.outputs import print_results, write_config, write_equity, write_results
 from trade_jev.policies import BASELINES, Gated, JevPolicy, JsonlCache, RateLimiter
 from trade_jev.settings import DEFAULT
 
@@ -67,12 +65,8 @@ async def main() -> None:
     policies, client = build_policies(args.policies.split(","), args)
     run_id = args.run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     out = ROOT / "runs" / run_id
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "config.json").write_text(json.dumps(
-        {"config": asdict(cfg), "days": days, "policies": [p.name for p in policies],
-         "encoder": args.encoder, "model": args.model,
-         "gate": {"min_conf": args.min_conf, "agree": args.agree, "min_hold_s": args.min_hold}},
-        indent=2))
+    gate = {"min_conf": args.min_conf, "agree": args.agree, "min_hold_s": args.min_hold}
+    write_config(out, cfg, days, [p.name for p in policies], args.encoder, args.model, gate)
 
     results: dict[str, list[DayResult]] = {p.name: [] for p in policies}
     book_rows_seen = snapshots = 0
@@ -92,16 +86,10 @@ async def main() -> None:
             print(f"[{d}] loaded {len(day.ts):,} rows in {time.time() - t0:.0f}s; "
                   f"{len(grid)} decisions × {len(policies)} policies", flush=True)
             day_res = await asyncio.gather(*(run_day(day, grid, p, cfg) for p in policies))
-            eq_dir = out / "equity"
-            eq_dir.mkdir(exist_ok=True)
-            eq = {"day": d, "symbol": day.symbol, "policies": {}}
             for p, r in zip(policies, day_res):
                 results[p.name].append(r)
-                curve = equity_curve(day, grid, r.trades)
-                eq["t_ns"], eq["mid"] = curve["t_ns"], curve["mid"]
-                eq["policies"][p.name] = {"equity": curve["equity"], "position": curve["position"]}
                 print(f"[{d}] {p.name:>16}: {len(r.trades):4d} trades  ${r.pnl:>10,.2f}", flush=True)
-            (eq_dir / f"{d}.json").write_text(json.dumps(eq))
+            write_equity(out, day, grid, list(day_res))
             del day
 
     try:
@@ -110,68 +98,13 @@ async def main() -> None:
         if client is not None:
             await client.aclose()
 
-    half = len(days) // 2
-    splits = {"all": days} if len(days) < 4 else {"all": days, "dev": days[:half], "holdout": days[half:]}
-    summary = {}
-    for name, rs in results.items():
-        pdir = out / name
-        pdir.mkdir(exist_ok=True)
-        with (pdir / "decisions.jsonl").open("w") as fh:
-            for r in sorted(rs, key=lambda r: r.day):
-                for dec in r.decisions:
-                    fh.write(json.dumps(dec) + "\n")
-        with (pdir / "trades.csv").open("w", newline="") as fh:
-            w = csv.DictWriter(fh, fieldnames=[f.name for f in fields(Trade)])
-            w.writeheader()
-            for r in sorted(rs, key=lambda r: r.day):
-                w.writerows(asdict(t) for t in r.trades)
-        summary[name] = {s: summarize([r for r in rs if r.day in ds]) for s, ds in splits.items()}
-    (out / "summary.json").write_text(json.dumps(summary, indent=2))
-
-    wall_s = round(time.time() - t_start, 1)
     jev = [getattr(p, "inner", p) for p in policies]
     jev = [p for p in jev if isinstance(p, JevPolicy)]
-    record = {
-        "run_id": run_id,
-        "finished_at": datetime.now().isoformat(timespec="seconds"),
-        "wall_time_s": wall_s,
-        "days": days,
-        "n_days": len(days),
-        "cadence_s": cfg.cadence_s,
-        "snapshots_decided": snapshots,
-        "book_updates_replayed": book_rows_seen,
-        "jev_api_calls": sum(p.api_calls for p in jev),
-        "jev_cache_hits": sum(p.cache_hits for p in jev),
-        "jev_cost_usd": sum(m["all"]["api_cost_usd"] for n, m in summary.items() if n.startswith("jev")),
-        "policies": {
-            n: {"net_pnl": m["all"]["net_pnl"], "trades": m["all"]["trades"],
-                "win_rate": m["all"]["win_rate"], "max_drawdown": m["all"]["max_drawdown"],
-                "actions": m["all"]["actions"],
-                **({"holdout_net_pnl": m["holdout"]["net_pnl"]} if "holdout" in m else {})}
-            for n, m in summary.items()
-        },
-        "config": asdict(cfg),
-        "encoder": args.encoder if jev else None,
-        "model": args.model if jev else None,
-        "gate": {"min_conf": args.min_conf, "agree": args.agree, "min_hold_s": args.min_hold}
-        if jev else None,
-    }
-    (out / "results.json").write_text(json.dumps(record, indent=2))
-    with (ROOT / "runs" / "index.jsonl").open("a") as fh:
-        fh.write(json.dumps(record) + "\n")
-
-    print(f"\nrun → {out}")
-    print(f"{record['n_days']} days · {record['snapshots_decided']:,} snapshots decided · "
-          f"{record['book_updates_replayed']:,} book updates · {wall_s}s · "
-          f"Jev calls: {record['jev_api_calls']:,} (+{record['jev_cache_hits']:,} cached) · "
-          f"${record['jev_cost_usd']:.4f}")
-    hdr = f"{'policy':>16} {'split':>8} {'net $':>11} {'trades':>7} {'win%':>6} {'sharpe':>7} {'maxDD':>9} {'actions'}"
-    print(hdr)
-    for name, by in summary.items():
-        for s, m in by.items():
-            wr = f"{m['win_rate'] * 100:.0f}" if m["win_rate"] is not None else "-"
-            print(f"{name:>16} {s:>8} {m['net_pnl']:>11,.2f} {m['trades']:>7} {wr:>6} "
-                  f"{str(m['sharpe_daily_ann']):>7} {m['max_drawdown']:>9,.0f} {m['actions']}")
+    summary, record = write_results(
+        out, run_id, results, days, cfg, wall_s=round(time.time() - t_start, 1),
+        snapshots=snapshots, book_rows=book_rows_seen, jev_policies=jev,
+        encoder=args.encoder, model=args.model, gate=gate)
+    print_results(out, record, summary)
 
     if jev:
         print("\nview it: uv run python -m trade_jev.view")

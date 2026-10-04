@@ -7,8 +7,9 @@ Tests Jev (TypeSafe) as a BUY / SELL / HOLD trader on NQ L10 order-book data fro
 - **Settings:** harness parameters: cutoff, agreeing answers, min hold, stop, target, commission.
 - **Replay:** a run's stored answers re-scored under new settings. It needs no API calls.
 - **View:** one local web app that replays any mix of runs, days and settings live.
+- **Live:** the same harness on a live Databento feed: Jev signals, paper trades and a live page. It places no orders.
 
-Flow: **run once → replay many times → view**.
+Flow: **run once → replay many times → view**. Then **live** for forward testing on new days.
 
 ## 0) Setup
 
@@ -21,7 +22,7 @@ echo "TRADE_JEV_DATA=/path/to/databento/files" >> .env        # optional; defaul
 TRADE_JEV_DATA=data/sample uv run python -m trade_jev.run --days 2026-06-23 --policies hold,random,imbalance   # smoke test
 ```
 
-**In git:** code, docs, `data/sample/` (synthetic), `results/` (published runs), `runs/index.jsonl`. **Local only:** Databento data, `runs/<id>/` (includes the order books Jev saw), `cache/`, `.env`.
+**In git:** code, docs, `data/sample/` (synthetic), `results/` (published runs), `runs/index.jsonl`. **Local only:** Databento data (incl. `data/live/` recordings), `runs/<id>/` (includes the order books Jev saw), `cache/`, `.env`.
 
 ## 1) Run
 
@@ -74,12 +75,27 @@ Copies a run's Jev answers, probabilities, trades and results to `results/<id>/`
 uv run python scripts/publish_run.py runs/<id> [runs/<id> ...]
 ```
 
-## 6) Test
+## 6) Live
+
+Streams NQ L10 from Databento, asks Jev on the backtest's clock (09:30:00 ET + every 15s), applies the registered filters, and keeps a paper position with the backtest's fills and costs. Hold, random and imbalance baselines run alongside. One local server at `http://localhost:8765` serves **Replay**, **Live** and **Docs**. The Docs tab ([`viz/docs.html`](viz/docs.html)) covers use cases, costs and next steps.
+
+```bash
+echo "DATABENTO_API_KEY=..." >> .env
+uv run python -m trade_jev.live                                    # start before 09:30 ET → /live; Ctrl-C to stop
+uv run python -m trade_jev.live --no-jev                           # feed + baselines only
+uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60 --stored-answers runs/<id>   # rehearsal, no subscription
+uv run python scripts/check_live_parity.py runs/<id> [runs/<id> ...]   # live engine == backtest, trade for trade
+```
+
+A session writes `runs/live-<day>/`, the same layout as a run plus `manual_fills.jsonl`, and records the feed to `data/live/` in the day-file format. It then opens in Replay and works with the replay scripts. The only built-in difference from the backtest is that the order goes out when Jev answers, not at the decision time; each decision records `jev_ms` and `send_ns`.
+
+## 7) Test
 
 Unit tests, plus a check that the page's replays match the Python replays.
 
 ```bash
 uv run pytest -q
 uv run python scripts/check_viewer.py runs/<id>
+uv run python scripts/check_live_parity.py runs/<id>
 uv run python scripts/make_sample.py        # regenerate the synthetic sample
 ```

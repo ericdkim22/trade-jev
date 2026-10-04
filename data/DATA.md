@@ -8,10 +8,13 @@ Backtests read NQ order-book data from Databento: one Parquet file per trading d
 data/
   DATA.md          ← this file
   databento/       ← put the day files here (gitignored)
+  live/            ← days recorded by the live runner (gitignored)
   sample/          ← 10 synthetic snapshots in the same shape (committed)
 ```
 
 To keep the files somewhere else, set `TRADE_JEV_DATA=/path/to/files` in `.env`.
+
+The live runner (`python -m trade_jev.live`) records each session to `data/live/` (gitignored), in the same format with a `__live` suffix. The loader reads both folders. If a day exists in both, the `TRADE_JEV_DATA` file wins.
 
 ## Day files
 

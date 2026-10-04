@@ -11,3 +11,6 @@ data/databento/
 cache/
 runs/*
 !runs/index.jsonl
+
+# days recorded by the live runner (licensed data)
+data/live/

@@ -2,9 +2,13 @@
 
   uv run python -m trade_jev.view            # → http://localhost:8765
 
-Serves viz/index.html plus a small JSON API:
+Serves viz/index.html (Replay), viz/live.html (Live), viz/docs.html (Docs) plus a small JSON API:
   GET /api/runs                  runs from runs/index.jsonl that have stored Jev answers
   GET /api/day?run=<id>&day=<d>  one day's price track + stored answers (built once, cached)
+  GET /api/live/state            live session snapshot ({"active": false} without trade_jev.live)
+  GET /api/live/stream           server-sent events: tick (quote, ~4/s) and update (refetch state)
+  GET /api/live/decision?i=<n>   the full state Jev saw for decision n
+  POST /api/live/fill            log a manual fill {action, price, contracts, note}
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import queue
 import threading
 import webbrowser
 from http import HTTPStatus
@@ -144,12 +149,68 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: HTTPStatus, msg: str):
         self._send(json.dumps({"error": msg}).encode(), "application/json", status=status)
 
+    def _json(self, obj, status=HTTPStatus.OK):
+        self._send(json.dumps(obj, separators=(",", ":")).encode(), "application/json", status=status)
+
+    def _stream(self, live):
+        """Server-sent events until the tab goes away."""
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        q = live.bus.subscribe()
+        try:
+            self.wfile.write(b"retry: 2000\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    msg = q.get(timeout=15)
+                except queue.Empty:
+                    msg = b": ping\n\n"
+                self.wfile.write(msg)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            live.bus.unsubscribe(q)
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        live = getattr(self.server, "live", None)
+        if url.path != "/api/live/fill":
+            return self._error(HTTPStatus.NOT_FOUND, "not found")
+        if live is None:
+            return self._error(HTTPStatus.CONFLICT, "no live session")
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            self._json(live.add_manual_fill(body))
+        except (KeyError, ValueError, TypeError) as e:
+            self._error(HTTPStatus.BAD_REQUEST, f"bad fill: {e}")
+
     def do_GET(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        live = getattr(self.server, "live", None)
         try:
             if url.path in ("/", "/index.html"):
                 self._send((VIZ / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path in ("/live", "/live.html"):
+                self._send((VIZ / "live.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path in ("/docs", "/docs.html"):
+                self._send((VIZ / "docs.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path == "/api/live/state":
+                self._json(live.state(int(q.get("window", 3600))) if live else {"active": False})
+            elif url.path == "/api/live/stream":
+                if live is None:
+                    return self._error(HTTPStatus.CONFLICT, "no live session")
+                self._stream(live)
+            elif url.path == "/api/live/decision":
+                d = live.decision_state(int(q.get("i", -1))) if live else None
+                if d is None:
+                    return self._error(HTTPStatus.NOT_FOUND, "no such decision")
+                self._json(d)
+            elif url.path in ("/favicon.svg", "/favicon.ico"):
+                self._send((VIZ / "favicon.svg").read_bytes(), "image/svg+xml")
             elif url.path == "/replay.js":
                 self._send((VIZ / "replay.js").read_bytes(), "text/javascript; charset=utf-8")
             elif url.path == "/api/runs":
@@ -173,6 +234,7 @@ def main() -> None:
     ap.add_argument("--no-open", action="store_true", help="don't open a browser tab")
     args = ap.parse_args()
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    srv.daemon_threads = True
     url = f"http://localhost:{args.port}"
     print(f"viewer → {url}  ({len(list_runs())} runs)  ctrl-c to stop", flush=True)
     if not args.no_open:

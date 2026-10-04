@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  try { if (localStorage.getItem("jev-viewer-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+</script>
+<title>Jev Live Docs</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --ring: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.04);
+  --long: #2a78d6; --short: #eb6834; --good: #006300; --bad: #d03b3b; --warn-bg: rgba(208,59,59,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+    --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767; --warn-bg: rgba(230,103,103,0.08);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+  --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767; --warn-bg: rgba(230,103,103,0.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 920px; margin: 0 auto; padding: 20px 16px 64px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 20px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+h2 { font-size: 18px; margin: 36px 0 10px; font-weight: 600; }
+h3 { font-size: 15px; margin: 18px 0 6px; font-weight: 600; }
+p, li { color: var(--ink-2); max-width: 72ch; }
+strong { color: var(--ink); }
+a { color: var(--long); }
+.nav { display: flex; gap: 4px; }
+.nav a { color: var(--ink-2); text-decoration: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 10px; font-size: 13px; }
+.nav a:hover { background: var(--wash); }
+.nav a[aria-current="page"] { color: var(--ink); border-color: var(--ring); background: var(--surface); font-weight: 600; }
+.btn { border: 1px solid var(--ring); background: var(--surface); color: var(--ink-2); border-radius: 8px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 13px; margin-left: auto; }
+.btn:hover { background: var(--wash); }
+.toc { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.toc a { color: var(--ink-2); }
+.callout { border: 1px solid var(--ring); border-left: 3px solid var(--bad); background: var(--warn-bg); border-radius: 10px; padding: 10px 14px; margin: 12px 0; }
+.callout p { margin: 4px 0; }
+.cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.case { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; }
+.case h3 { margin: 0 0 4px; }
+.case p { margin: 4px 0 8px; font-size: 14px; }
+.case pre { white-space: pre-wrap; word-break: break-all; }
+.case .who { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+pre { margin: 6px 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; overflow-x: auto;
+      font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--wash); border-radius: 4px; padding: 1px 4px; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; margin: 8px 0; }
+th { text-align: left; color: var(--ink-2); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--grid); color: var(--ink-2); vertical-align: top; }
+td.n, th.n { text-align: right; white-space: nowrap; }
+tr.total td { color: var(--ink); font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+ol.steps li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Jev Live</h1>
+    <nav class="nav"><a href="/">Replay</a><a href="/live">Live</a><a href="/docs" aria-current="page">Docs</a></nav>
+    <button class="btn" id="theme" aria-label="Toggle dark mode"></button>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#what">What it is</a><a href="#cases">Use cases</a><a href="#run">How to run</a>
+    <a href="#timing">Timing vs the backtest</a><a href="#cost">Costs</a><a href="#next">Next steps</a>
+  </nav>
+
+  <h2 id="what">What it is</h2>
+  <p>The live runner streams NQ's top-10 order book from Databento and asks Jev every 15 seconds for BUY, SELL or HOLD. It applies the same filters as the backtest (0.7 cutoff, 4 agreeing answers, 30s minimum hold, 200-tick stop, 100-tick target) and keeps a <strong>paper position</strong> with the backtest's fills and costs. The Live tab shows the signal, so you can trade it by hand.</p>
+  <p>It <strong>places no orders</strong>. It runs the backtest code on a growing order book, and a parity check confirms that a recorded day streamed through it gives <strong>exactly the backtest's trades</strong> (15 days × 3 settings, every trade identical).</p>
+  <div class="callout">
+    <p><strong>This is a lead, not a proven edge.</strong> The filter settings were picked from 1,920 tried on the same 15 days they were scored on. In the 11-day holdout run (looser settings), Jev made +$14.3k on its second half against +$11.4k for random trades, with a $27.7k max drawdown. Forward-test on new days with the settings frozen before risking money.</p>
+  </div>
+
+  <h2 id="cases">Use cases</h2>
+  <div class="cases">
+    <div class="case">
+      <div class="who">Primary · unattended</div>
+      <h3>1. Forward test</h3>
+      <p>Run every regular session with settings frozen. Each day becomes an out-of-sample result with its own random and imbalance baselines, decided on the same clock.</p>
+      <pre><code>uv run python -m trade_jev.live --no-open</code></pre>
+    </div>
+    <div class="case">
+      <div class="who">You at the screen</div>
+      <h3>2. Manual signal trading</h3>
+      <p>Keep <a href="/live">Live</a> open with alerts on. When the banner changes (ENTER LONG, REVERSE TO SHORT…), enter at your broker with a <strong>bracket order</strong> at the stop and target prices shown. Exits then happen without you. Log each fill in “My fills” to measure slippage against the paper fill.</p>
+      <pre><code>uv run python -m trade_jev.live</code></pre>
+    </div>
+    <div class="case">
+      <div class="who">After the close</div>
+      <h3>3. Post-session review</h3>
+      <p>Each session is saved as a normal run (<code>runs/live-&lt;day&gt;</code>) and a normal day file (<code>data/live/</code>), so it opens in <a href="/">Replay</a> and works with the sweep scripts. Treat setting sweeps as research, never as changes to the live settings.</p>
+      <pre><code>uv run python -m trade_jev.view
+uv run python scripts/replay_sweep.py runs/live-2026-10-05</code></pre>
+    </div>
+    <div class="case">
+      <div class="who">No subscription needed</div>
+      <h3>4. Rehearsal</h3>
+      <p>Play a recorded day through the live engine at any speed: real Jev calls, or a run's stored answers for free. Good for learning the screen and for testing changes outside market hours.</p>
+      <pre><code>uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60 \
+  --stored-answers runs/20260917-172739</code></pre>
+    </div>
+    <div class="case">
+      <div class="who">Before trusting changes</div>
+      <h3>5. Parity check</h3>
+      <p>Confirms the live engine and the backtest give identical trades on every recorded day. Run it after any change to the engine, harness or filters.</p>
+      <pre><code>uv run python scripts/check_live_parity.py runs/20260917-172739 \
+  runs/20260917-174009 runs/20260917-holdout11</code></pre>
+    </div>
+  </div>
+
+  <h2 id="run">How to run</h2>
+  <p>It's a <strong>local server</strong> on <code>http://localhost:8765</code>. One command starts the feed, Jev, the paper trading and the web app (Replay, Live and Docs). Nothing listens outside your machine.</p>
+  <h3>One-time setup</h3>
+<pre><code>uv sync
+echo "TYPESAFE_API_KEY=..."  >> .env
+echo "DATABENTO_API_KEY=..." >> .env      # live only; rehearsals don't need it</code></pre>
+  <h3>Each trading day</h3>
+<pre><code>uv run python -m trade_jev.live           # start any time before 09:30 ET; opens /live
+# Ctrl-C to stop. At 15:55 ET it flattens, writes the run, and keeps the page up.</code></pre>
+  <p class="small">Started late? It replays the session so far from Databento (intraday replay), so the look-backs and the 4-answer streak are right. Old signals show as <strong>CATCH-UP</strong> and never alert. Add <code>--no-catch-up</code> to skip the replay.</p>
+  <h3>Useful flags</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Flag</th><th>What it does</th></tr>
+    <tr><td><code>--symbol NQZ6</code></td><td>Contract to trade. Default: NQ front month, rolling 8 days before expiry. Keep the feed on NQ even if you trade MNQ: the backtest and Jev's inputs are NQ, and MNQ trades at the same prices. Paper P&amp;L is in NQ dollars ($20/pt); divide by 10 for MNQ.</td></tr>
+    <tr><td><code>--no-jev</code></td><td>Baselines only: tests the feed and page without Jev calls.</td></tr>
+    <tr><td><code>--from-file DAY --speed N</code></td><td>Rehearse a recorded day at N× real time (0 = as fast as possible).</td></tr>
+    <tr><td><code>--stored-answers runs/&lt;id&gt;</code></td><td>Play back a run's Jev answers instead of calling Jev.</td></tr>
+    <tr><td><code>--jev-timeout 8</code></td><td>A Jev call slower than this counts as HOLD and breaks the streak.</td></tr>
+    <tr><td><code>--port 8765 --no-open --no-save</code></td><td>Server port, don't open a browser, don't write runs/ or data/live/.</td></tr>
+  </table></div>
+  <h3>What a session writes</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Path</th><th>Contents</th></tr>
+    <tr><td><code>runs/live-&lt;day&gt;/</code></td><td>Same layout as a backtest run: <code>config.json</code>, per-policy <code>decisions.jsonl</code> and <code>trades.csv</code>, <code>equity/</code>, <code>summary.json</code>, <code>results.json</code>, plus <code>manual_fills.jsonl</code>. Jev's decisions are written as they happen. Listed in <code>runs/index.jsonl</code>.</td></tr>
+    <tr><td><code>data/live/GLBX.MDP3__&lt;sym&gt;__mbp-10__rth__&lt;day&gt;__live.parquet</code></td><td>The recorded feed in the day-file format, so the backtest and Replay can load it. Licensed data, gitignored.</td></tr>
+    <tr><td><code>runs/rehearsal-&lt;day&gt;-&lt;time&gt;/</code></td><td>Rehearsal runs (no feed recording).</td></tr>
+  </table></div>
+
+  <h2 id="timing">Timing vs the backtest</h2>
+  <p>The registered settings were chosen on one clock, and the live runner uses the same clock: the same decision times, look-backs and fill delay. It warns at startup if any of them is changed. Only Jev's response time and your reaction time differ, and the first is recorded on every decision (<code>jev_ms</code>, <code>send_ns</code>).</p>
+  <div class="tablewrap"><table>
+    <tr><th>Item</th><th>Backtest</th><th>Live</th><th>Why it matters</th></tr>
+    <tr><td>Decision cadence</td><td>every 15s</td><td>every 15s (same grid)</td><td>“4 agreeing answers” = 1 minute only at 15s</td></tr>
+    <tr><td>Decision times</td><td>09:30:00 ET + k·15s, last 15:54:45 (1,540/day)</td><td>same timestamps</td><td>Same books as the backtest would see</td></tr>
+    <tr><td>Session end</td><td>flatten at 15:55:00 ET</td><td>same</td><td></td></tr>
+    <tr><td>Look-backs</td><td>mid & aggressor volume 15s and 60s back</td><td>same</td><td>Needs ≥60s of data before 09:30</td></tr>
+    <tr><td>Minimum hold</td><td>30s (2 decisions)</td><td>same</td><td></td></tr>
+    <tr><td>Jev response</td><td><strong>assumed instant</strong></td><td><strong>measured</strong>; order sent when Jev answers</td><td>The only built-in difference; check <code>jev_ms</code> after a session</td></tr>
+    <tr><td>Fill delay</td><td>250ms after the order, at the best bid/ask</td><td>same, after Jev answers</td><td>Market orders pay the spread</td></tr>
+    <tr><td>Stop / target</td><td>checked on every book update</td><td>same</td><td>Use broker brackets; you can't react tick by tick</td></tr>
+    <tr><td>Your reaction</td><td>n/a</td><td>seconds</td><td>Measured by “My fills” vs the paper fill</td></tr>
+  </table></div>
+
+  <h2 id="cost">Rough monthly costs</h2>
+  <p class="small muted">Prices checked 2026-10-02. Confirm them when you sign up. 21 trading sessions a month.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Item</th><th>How it's figured</th><th class="n">Per day</th><th class="n">Per month</th></tr>
+    <tr><td>Jev</td><td>1,540 calls/day at ~$0.00004 each (the backtest: $0.91 for 22,401 calls; ~970 tokens × $0.042/M)</td><td class="n">$0.06</td><td class="n">$1.30</td></tr>
+    <tr><td>Databento CME Standard plan</td><td>Live + historical CME, including MBP-10</td><td class="n"></td><td class="n">$199</td></tr>
+    <tr><td>CME license fee, non-professional display</td><td>Passed through by Databento, no markup</td><td class="n"></td><td class="n">≈ $36.50</td></tr>
+    <tr class="total"><td>Total, manual trading</td><td></td><td class="n"></td><td class="n">≈ $237</td></tr>
+    <tr><td class="muted">If CME counts your use as professional non-display</td><td class="muted">Programs using the data (not just displaying it). Starts at ≈ $1,219/mo instead of $36.50</td><td class="n"></td><td class="n muted">≈ $1,420</td></tr>
+    <tr><td class="muted">Broker commissions</td><td class="muted">Already in the paper P&amp;L at $2.50/side per NQ contract</td><td class="n"></td><td class="n muted">–</td></tr>
+  </table></div>
+  <div class="callout">
+    <p><strong>Ask Databento which license category applies before subscribing.</strong> CME's non-display definition is broad and may cover a program generating signals even if you place the trades by hand. Automated order placement almost certainly counts.</p>
+  </div>
+  <p>Scale: the backtest averaged about <strong>$117 per trade</strong> on NQ ($11.70 on MNQ) over ~12 trades a day. If that held, the data cost would be a few trades a month. That "if" is what the forward test is for. Jev costs almost nothing even at 5s cadence (≈ $0.19/day), but changing the cadence breaks the registered settings.</p>
+  <p class="small">Sources: <a href="https://databento.com/pricing">Databento pricing</a> ·
+    <a href="https://roadmap.databento.com/announcements/live-cme-data-is-now-open-to-all-users-starting-at-3265month">Databento: live CME license fees</a> ·
+    <a href="https://databento.com/blog/updates-to-subscription-pricing">Databento: June 2026 pricing update</a> ·
+    <a href="https://api.databento.com/static/licensing/cme/cme-market-data-fee-list.pdf">CME fee list</a></p>
+
+  <h2 id="next">Next steps</h2>
+  <ol class="steps">
+    <li><strong>Confirm the license category</strong> with Databento, then subscribe to CME Standard and add <code>DATABENTO_API_KEY</code>.</li>
+    <li><strong>Parity check</strong> passes on all 15 days (done 2026-10-02; rerun after any engine change).</li>
+    <li><strong>Rehearse</strong> once at <code>--speed 60</code>, then run one live session with <code>--no-jev</code> to check the feed and recording, then a full session with Jev.</li>
+    <li><strong>Paper forward test: at least 20 sessions, settings frozen.</strong> Write the pass criteria down first, for example:
+      <ul>
+        <li>net P&amp;L &gt; 0 after costs, using live fill times (with Jev latency);</li>
+        <li>beats the live random baseline on total and on more than half the days;</li>
+        <li>worst day better than −$2,000; Jev errors/timeouts &lt; 1% of calls.</li>
+      </ul></li>
+    <li><strong>If it passes:</strong> trade <strong>MNQ, 1 contract</strong>, by hand with broker brackets; log every fill and compare with the paper P&amp;L weekly. Stop if live results fall outside the forward-test range.</li>
+    <li><strong>Later:</strong> broker API automation (a Tradovate or IBKR paper account first). This likely moves you to the professional non-display license.</li>
+  </ol>
+</main>
+<script>
+const t = document.getElementById("theme");
+const paint = () => { t.textContent = document.documentElement.dataset.theme === "dark" ? "☀ Light" : "☾ Dark"; };
+t.onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("jev-viewer-theme", next); } catch (e) {}
+  paint();
+};
+paint();
+</script>
+</body>
+</html>

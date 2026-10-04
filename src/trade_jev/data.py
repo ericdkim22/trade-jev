@@ -29,14 +29,18 @@ ET = ZoneInfo("America/New_York")
 
 # Databento day files (see data/DATA.md). Default: data/databento/ (gitignored); override in .env.
 DATA_DIR = Path(os.environ.get("TRADE_JEV_DATA", ROOT / "data" / "databento")).expanduser()
+# Days recorded by the live runner (trade_jev.live), same file format. Gitignored.
+LIVE_DIR = ROOT / "data" / "live"
 
 _NAME = re.compile(r"GLBX\.MDP3__(?P<sym>\w+)__mbp-10__rth__(?P<day>\d{4}-\d{2}-\d{2})__\w+\.parquet")
 
 
-def list_days(data_dir: Path = DATA_DIR) -> dict[str, tuple[str, Path]]:
-    """{'2026-06-23': ('NQU6', path)} for every non-empty cached day."""
+def list_days(data_dir: Path | None = None) -> dict[str, tuple[str, Path]]:
+    """{'2026-06-23': ('NQU6', path)} for every non-empty cached day.
+    By default: live recordings, overridden by DATA_DIR files for the same day."""
+    dirs = [data_dir] if data_dir else [LIVE_DIR, DATA_DIR]
     out: dict[str, tuple[str, Path]] = {}
-    for p in sorted(data_dir.glob("*.parquet")):
+    for p in [p for d in dirs for p in sorted(d.glob("*.parquet"))]:
         m = _NAME.fullmatch(p.name)
         if not m:
             continue
@@ -84,7 +88,7 @@ def _ticks(a: pa.Array) -> np.ndarray:
     return np.rint(a.to_numpy(zero_copy_only=False) / TICK).astype(np.int32)
 
 
-def load_day(day: str, decision_times_ns, data_dir: Path = DATA_DIR) -> Day:
+def load_day(day: str, decision_times_ns, data_dir: Path | None = None) -> Day:
     """Load `day`; store full L10 books at the rows seen at each decision time."""
     symbol, path = list_days(data_dir)[day]
     pf = pq.ParquetFile(path)
