@@ -59,12 +59,18 @@ def _position_state(ctx: Context) -> dict:
     }
 
 
+INSTRUMENTS = {
+    "NQ": "Nasdaq-100 E-mini futures, tick size 0.25, $5 per tick",
+    "MNQ": "Micro E-mini Nasdaq-100 futures, tick size 0.25, $0.50 per tick",
+}
+
+
 def raw_l10(ctx: Context) -> dict:
     """Raw numbers: L10 ladder + recent flow + recent mids + our position."""
     b = ctx.book
     bid_px, bid_sz, ask_px, ask_sz = b
     return {
-        "instrument": f"{ctx.day.symbol} (Nasdaq-100 E-mini futures, tick size 0.25, $5 per tick)",
+        "instrument": f"{ctx.day.symbol} ({INSTRUMENTS['MNQ' if ctx.day.symbol.startswith('MNQ') else 'NQ']})",
         "time_et": ns_to_et(ctx.t_ns),
         "position": _position_state(ctx),
         "order_book": {

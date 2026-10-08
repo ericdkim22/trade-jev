@@ -79,9 +79,22 @@ uv run python scripts/publish_run.py runs/<id> [runs/<id> ...]
 
 Streams NQ L10 from Databento, asks Jev on the backtest's clock (09:30:00 ET + every 15s), applies the registered filters, and keeps a paper position with the backtest's fills and costs. Hold, random and imbalance baselines run alongside. One local server at `http://localhost:8765` serves **Replay**, **Live** and **Docs**. The Docs tab ([`viz/docs.html`](viz/docs.html)) covers use cases, costs and next steps.
 
+**IBKR feed (default in this fork).** Needs IB Gateway on 127.0.0.1:4002 and the CME Real-Time (NP,L2)
+subscription. Read-only, client ID 20; it places no orders. Defaults to the MNQ front month ($2 / point); `--root NQ`
+for NQ. Pass `--commission` for your contract (the default 2.50 is NQ's). IBKR has no intraday replay of depth, so a
+late start skips decisions until it has 60s of book. IBKR trades carry no aggressor side: a trade at or above the
+previous ask counts as a buy, at or below the bid as a sell.
+
+```bash
+uv run python -m trade_jev.live --commission 0.62                  # IBKR, MNQ front month → /live
+uv run python -m trade_jev.live --root NQ                          # IBKR, NQ
+```
+
+**Databento feed:**
+
 ```bash
 echo "DATABENTO_API_KEY=..." >> .env
-uv run python -m trade_jev.live                                    # start before 09:30 ET → /live; Ctrl-C to stop
+uv run python -m trade_jev.live --feed databento --root NQ         # start before 09:30 ET → /live; Ctrl-C to stop
 uv run python -m trade_jev.live --no-jev                           # feed + baselines only
 uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60 --stored-answers runs/<id>   # rehearsal, no subscription
 uv run python scripts/check_live_parity.py runs/<id> [runs/<id> ...]   # live engine == backtest, trade for trade

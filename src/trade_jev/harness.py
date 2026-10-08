@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
-from trade_jev.data import POINT_VALUE, TICK, Day, ns_to_et, secs
+from trade_jev.data import TICK, Day, ns_to_et, point_value, secs
 from trade_jev.encode import LOOKBACKS, Context, Position
 from trade_jev.settings import DEFAULT
 
@@ -69,7 +69,7 @@ class Book:
         pts = (px - p.entry_px) * p.side
         self.res.trades.append(Trade(
             self.day.day, p.side, p.entry_ns, p.entry_px, int(self.day.ts[row]), px, reason,
-            round(pts, 2), round(pts * POINT_VALUE - 2 * self.cfg.commission, 2),
+            round(pts, 2), round(pts * point_value(self.day.symbol) - 2 * self.cfg.commission, 2),
         ))
         self.pos = Position()
 
@@ -160,7 +160,7 @@ def equity_curve(day: Day, grid: np.ndarray, trades: list[Trade], step_s: int = 
     pos = np.zeros(len(t), dtype=np.int8)
     for tr in trades:
         a, b = np.searchsorted(t, [tr.entry_ns, tr.exit_ns])
-        eq[a:b] += (mid[a:b] - tr.entry_px) * tr.side * POINT_VALUE
+        eq[a:b] += (mid[a:b] - tr.entry_px) * tr.side * point_value(day.symbol)
         pos[a:b] = tr.side
         eq[b:] += tr.pnl
     return {"t_ns": t.tolist(), "mid": mid.tolist(), "equity": np.round(eq, 2).tolist(),

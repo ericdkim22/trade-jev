@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from trade_jev.data import TICK, POINT_VALUE, secs
+from trade_jev.data import TICK, point_value, secs
 from trade_jev.replay import RunDay, load_market, load_runs
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,7 +98,7 @@ def build_day(run_id: str, rd: RunDay) -> dict:
     fills = day.row_at(np.array([d["t_ns"] for d in decs]) + secs(cfg.latency_ms / 1000))  # as the harness
     return {
         "run_id": run_id, "day": rd.day, "symbol": day.symbol, "t0_ns": t0,
-        "tick": TICK, "point_value": POINT_VALUE, "commission": cfg.commission,
+        "tick": TICK, "point_value": point_value(day.symbol), "commission": cfg.commission,
         "track": second_track(day, t0, t1),
         "decisions": [{
             "t": round((d["t_ns"] - t0) / 1e9, 3),

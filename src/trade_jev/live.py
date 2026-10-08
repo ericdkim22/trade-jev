@@ -1,4 +1,4 @@
-"""Live: stream NQ L10 from Databento, ask Jev every 15s, apply the filters, paper-trade, serve a live view.
+"""Live: stream NQ / MNQ L10 from IBKR (default) or Databento, ask Jev every 15s, apply the filters, paper-trade, serve a live view.
 
   uv run python -m trade_jev.live                                   # live session → http://localhost:8765/live
   uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60 # rehearsal from a recorded day
@@ -38,7 +38,7 @@ import pyarrow.parquet as pq
 
 from trade_jev import ROOT
 from trade_jev.data import (ET, LEVELS, LIVE_DIR, TICK, Day, decision_grid, et_to_ns, list_days,
-                            ns_to_et, secs)
+                            ns_to_et, point_value, secs)
 from trade_jev.encode import LOOKBACKS, Context
 from trade_jev.harness import Book, Config, DayResult
 from trade_jev.metrics import JEV_USD_PER_TOKEN
@@ -238,6 +238,84 @@ class DatabentoSource:
                 yield rows_to_batch(rows)
         finally:
             client.stop()
+
+
+def ib_row(ts: int, bids, asks, trades, prev: tuple[int, int] | None) -> tuple | None:
+    """IBKR depth (DOMLevel lists) + the trades since the last row → the row tuple `mbp10_row` makes.
+    IBKR trades carry no aggressor side: at or above the previous row's ask is a buy, at or below its
+    bid a sell, between them 0."""
+    if not bids or not asks:
+        return None
+    bids = sorted(bids, key=lambda l: -l.price)[:LEVELS]
+    asks = sorted(asks, key=lambda l: l.price)[:LEVELS]
+    bp, bs, ap, as_ = [0] * LEVELS, [0] * LEVELS, [0] * LEVELS, [0] * LEVELS
+    for i in range(LEVELS):
+        if i < len(bids):
+            bp[i], bs[i] = round(bids[i].price / TICK), int(bids[i].size)
+        else:
+            bp[i], bs[i] = bp[i - 1] - 1, 0
+        if i < len(asks):
+            ap[i], as_[i] = round(asks[i].price / TICK), int(asks[i].size)
+        else:
+            ap[i], as_[i] = ap[i - 1] + 1, 0
+    delta = 0
+    if prev:
+        for t in trades:
+            px = round(t.price / TICK)
+            delta += int(t.size) if px >= prev[1] else -int(t.size) if px <= prev[0] else 0
+    return ts, bp, bs, ap, as_, delta
+
+
+class IBSource:
+    """IBKR market depth (10 levels) + tick-by-tick trades. Read-only; places nothing. Rows are stamped
+    with the local receive time (IBKR depth has no exchange time). No intraday replay: a late start
+    begins with the book as of now."""
+
+    def __init__(self, symbol: str, stop_ns: int, host: str = "127.0.0.1", port: int = 4002,
+                 client_id: int = 20, flush_s: float = 0.1):
+        self.symbol, self.stop_ns, self.flush_s = symbol, stop_ns, flush_s
+        self.host, self.port, self.client_id = host, port, client_id
+        self.live = True
+
+    async def batches(self):
+        from ib_async import IB, Future
+        ib = IB()
+        fatal: list[str] = []
+
+        def on_error(req_id, code, msg, contract):
+            if code in (354, 10092, 10089, 200, 309):  # not subscribed / no such contract / too many depth reqs
+                fatal.append(f"{code}: {msg}")
+        ib.errorEvent += on_error
+        await ib.connectAsync(self.host, self.port, clientId=self.client_id, readonly=True, timeout=15)
+        try:
+            [c] = await ib.qualifyContractsAsync(Future(localSymbol=self.symbol, exchange="CME"))
+            ticker = ib.reqMktDepth(c, numRows=LEVELS, isSmartDepth=False)
+            ib.reqTickByTickData(c, "AllLast")
+            rows: list[tuple] = []
+            prev: list[tuple[int, int] | None] = [None]
+            last_ts = [0]
+
+            def on_pending(tickers):
+                if ticker not in tickers:
+                    return
+                ts = max(int(ticker.timestamp * 1e9), last_ts[0] + 1)
+                r = ib_row(ts, ticker.domBids, ticker.domAsks, ticker.tickByTicks, prev[0])
+                if r is not None:
+                    rows.append(r)
+                    last_ts[0], prev[0] = ts, (r[1][0], r[3][0])
+            ib.pendingTickersEvent += on_pending
+            # ponytail: a Gateway disconnect ends the session; add reconnect if that happens mid-session
+            while ib.isConnected():
+                await asyncio.sleep(self.flush_s)
+                if fatal:
+                    raise RuntimeError(f"IBKR {self.symbol}: {fatal[0]}")
+                if rows:
+                    out, rows[:] = list(rows), []
+                    yield rows_to_batch(out)
+                    if self.stop_ns and out[-1][0] > self.stop_ns:
+                        break
+        finally:
+            ib.disconnect()
 
 
 class Recorder:
@@ -677,7 +755,7 @@ class Session:
             "speed": getattr(self.source, "speed", None),
             "settings": {**asdict(g), "cadence_s": c.cadence_s, "latency_ms": c.latency_ms,
                          "commission": c.commission, "start_et": c.start_et, "end_et": c.end_et},
-            "tick": TICK, "point_value": 20.0,
+            "tick": TICK, "point_value": point_value(e.day.symbol),
             "jev": None if not e.jev_name else {
                 "name": e.jev_name, "stored": not e.real_jev, "calls": e.jev_calls, "errors": e.guard.errors,
                 "avg_ms": round(float(np.mean(e.jev_ms)), 0) if e.jev_ms else None,
@@ -757,15 +835,15 @@ def serve(session: Session | None, port: int, open_browser: bool) -> ThreadingHT
 
 # ---------------------------------------------------------------- main
 
-def front_month(today: datetime) -> str:
-    """NQ quarterly front month (H M U Z), rolling 8 days before the 3rd-Friday expiry."""
+def front_month(today: datetime, root: str = "NQ") -> str:
+    """NQ / MNQ quarterly front month (H M U Z), rolling 8 days before the 3rd-Friday expiry."""
     codes = {3: "H", 6: "M", 9: "U", 12: "Z"}
     d = today.date()
     for y, m in [(d.year, 3), (d.year, 6), (d.year, 9), (d.year, 12), (d.year + 1, 3)]:
         first = date(y, m, 1)
         third_fri = date(y, m, 1 + (4 - first.weekday()) % 7 + 14)
         if d < third_fri - timedelta(days=8):
-            return f"NQ{codes[m]}{y % 10}"
+            return f"{root}{codes[m]}{y % 10}"
     raise AssertionError("unreachable")
 
 
@@ -776,7 +854,11 @@ def new_run_dir(prefix: str, day: str) -> Path:
 
 async def amain() -> None:
     ap = argparse.ArgumentParser(description="Live (or rehearsed) Jev signals on NQ with a local view.")
-    ap.add_argument("--symbol", default=None, help="raw Databento symbol, default: NQ front month")
+    ap.add_argument("--feed", choices=("ibkr", "databento"), default="ibkr", help="live market data source")
+    ap.add_argument("--root", choices=("MNQ", "NQ"), default="MNQ", help="contract when --symbol isn't given")
+    ap.add_argument("--symbol", default=None, help="raw symbol (e.g. MNQZ6), default: --root front month")
+    ap.add_argument("--ib-port", type=int, default=4002, help="IB Gateway port (4002 = paper)")
+    ap.add_argument("--ib-client-id", type=int, default=20)
     ap.add_argument("--from-file", metavar="DAY", default=None, help="rehearse on a recorded day (no subscription)")
     ap.add_argument("--speed", type=float, default=60.0, help="--from-file: x real time (0 = as fast as possible)")
     ap.add_argument("--stored-answers", metavar="RUN_DIR", default=None, help="play back a run's Jev answers")
@@ -817,7 +899,7 @@ async def amain() -> None:
     else:
         now = datetime.now(ET)
         day = now.date().isoformat()
-        symbol = args.symbol or front_month(now)
+        symbol = args.symbol or front_month(now, args.root)
         open_ns = et_to_ns(day, cfg.start_et) - secs(max(LOOKBACKS) + 60)
         start_ns = None
         if time.time_ns() > open_ns:  # late start: intraday replay so the 60s look-back and streaks exist
@@ -825,9 +907,13 @@ async def amain() -> None:
         stop_ns = et_to_ns(day, cfg.end_et) + secs(300)
         if time.time_ns() > stop_ns:
             ap.error(f"the {day} session is over (ends {cfg.end_et} ET); use --from-file to rehearse")
-        if not os.environ.get("DATABENTO_API_KEY"):
+        if args.feed == "ibkr":
+            start_ns = None  # IBKR has no intraday replay of depth
+            source = IBSource(symbol, stop_ns, port=args.ib_port, client_id=args.ib_client_id)
+        elif not os.environ.get("DATABENTO_API_KEY"):
             ap.error("set DATABENTO_API_KEY in .env (or use --from-file)")
-        source = DatabentoSource(symbol, start_ns, stop_ns)
+        else:
+            source = DatabentoSource(symbol, start_ns, stop_ns)
         run_dir = None if args.no_save else new_run_dir("live", day)
         if not args.no_save:
             recorder = Recorder(day, symbol)
@@ -851,6 +937,9 @@ async def amain() -> None:
 
     baselines = [b for b in args.baselines.split(",") if b]
     session = Session(args, cfg, gate, day, symbol, source, jev, baselines, run_dir, recorder)
+    if isinstance(source, IBSource):  # late start: skip decisions the feed can't cover (book + 60s look-back)
+        e = session.engine
+        e.gi = int(np.searchsorted(e.grid, time.time_ns() + secs(max(LOOKBACKS)), side="left"))
     if run_dir:
         write_config(run_dir, cfg, [day], list(session.engine.policies), args.encoder, args.model,
                      {"min_conf": gate.min_conf, "agree": gate.agree, "min_hold_s": gate.min_hold_s},

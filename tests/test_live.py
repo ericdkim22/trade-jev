@@ -8,7 +8,7 @@ from trade_jev.data import ET, LEVELS, TICK, Day, et_to_ns, load_day, secs
 from trade_jev.encode import Context, Position
 from trade_jev.harness import Config, run_day
 from trade_jev.live import (UNDEF, Batch, Engine, Guarded, LiveDay, ParquetSource, Recorder, front_month,
-                            mbp10_row)
+                            ib_row, mbp10_row)
 from trade_jev.policies import Decision, Gated
 from trade_jev.settings import Settings
 
@@ -165,3 +165,22 @@ def test_front_month_rolls_before_expiry():
     assert f("2026-10-02") == "NQZ6"
     assert f("2026-12-10") == "NQH7"
     assert f("2026-06-15") == "NQU6"
+
+
+def test_ib_row_pads_levels_and_signs_trades():
+    lvl = lambda px, sz: SimpleNamespace(price=px, size=sz)
+    bids = [lvl(100.00, 3), lvl(100.25, 5)]  # unsorted, as IBKR may deliver
+    asks = [lvl(100.50, 4)]
+    trade = lambda px, sz: SimpleNamespace(price=px, size=sz)
+    ts, bp, bs, ap, as_, delta = ib_row(7, bids, asks, [trade(100.75, 2), trade(100.25, 1), trade(100.50, 9)],
+                                        prev=(401, 403))
+    assert ts == 7 and bp[:3] == [401, 400, 399] and bs[:3] == [5, 3, 0]
+    assert ap[:2] == [402, 403] and as_[:2] == [4, 0] and len(bp) == LEVELS
+    assert delta == 2 - 1  # buy at the ask, sell at the bid, between ignored
+    assert ib_row(1, [], asks, [], None) is None
+    assert ib_row(1, bids, asks, [trade(100.5, 2)], None)[5] == 0  # no previous book: no side
+
+
+def test_front_month_micro():
+    assert front_month(datetime(2026, 10, 8, tzinfo=ET), "MNQ") == "MNQZ6"
+    assert front_month(datetime(2026, 12, 10, tzinfo=ET), "MNQ") == "MNQH7"

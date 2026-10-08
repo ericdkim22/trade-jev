@@ -24,6 +24,12 @@ from trade_jev import ROOT
 
 TICK = 0.25
 POINT_VALUE = 20.0  # NQ: $20 / point  →  $5 / tick
+MICRO_POINT_VALUE = 2.0  # MNQ: $2 / point  →  $0.50 / tick
+
+
+def point_value(symbol: str) -> float:
+    """$ per point for a raw symbol (NQZ6 / MNQZ6)."""
+    return MICRO_POINT_VALUE if symbol.startswith("MNQ") else POINT_VALUE
 LEVELS = 10
 ET = ZoneInfo("America/New_York")
 
