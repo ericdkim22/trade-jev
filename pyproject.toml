@@ -25,3 +25,8 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.uv]
+# databento pulls in pip-system-certs on Windows; it patches `ssl` at startup and every Jev call then
+# fails with RecursionError inside the SDK's truststore context. Never install it.
+override-dependencies = ["pip-system-certs; sys_platform == 'never'"]

@@ -10,6 +10,9 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "pip-system-certs", marker = "sys_platform == 'never'" }]
+
 [[package]]
 name = "aeventkit"
 version = "2.1.0"
@@ -324,7 +327,7 @@ dependencies = [
     { name = "databento-dbn" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pip-system-certs", marker = "sys_platform == 'win32'" },
+    { name = "pip-system-certs", marker = "sys_platform == 'never'" },
     { name = "pyarrow" },
     { name = "requests" },
     { name = "zstandard" },
