@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
-  try { if (localStorage.getItem("jev-viewer-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+  try { if (localStorage.getItem("jev-viewer-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
 </script>
 <title>Jev Live</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -15,6 +15,7 @@
   --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.04);
   --long: #2a78d6; --short: #eb6834; --neutral: #898781; --good: #006300; --bad: #d03b3b;
   --p1: #1baf7a; --p2: #4a3aa7; --p3: #e87ba4; --p4: #eda100;
+  --accent: #4d7c0f; --up: #16a34a; --down: #dc2626;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -23,6 +24,7 @@
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
     --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767;
     --p1: #199e70; --p2: #9085e9; --p3: #d55181; --p4: #c98500;
+    --page: #0b1012; --surface: #121a1c; --accent: #a3e635; --up: #84cc16; --down: #f2604a;
   }
 }
 :root[data-theme="dark"] {
@@ -31,6 +33,7 @@
   --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
   --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767;
   --p1: #199e70; --p2: #9085e9; --p3: #d55181; --p4: #c98500;
+  --page: #0b1012; --surface: #121a1c; --accent: #a3e635; --up: #84cc16; --down: #f2604a;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -102,6 +105,34 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 u
 .form input.wide { width: 200px; }
 .empty { color: var(--muted); padding: 16px 0; text-align: center; }
 .note { color: var(--muted); font-size: 12px; }
+/* chart + portfolio (Jev-Trades layout) */
+.desk { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .desk { grid-template-columns: minmax(0, 1fr); } }
+.label { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.label.accent { color: var(--accent); }
+.ttl { font-size: 18px; margin: 4px 0 12px; }
+.kpis { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--grid); }
+.kpis > div { padding: 12px 10px; border-bottom: 1px solid var(--grid); }
+.kpis > div:nth-child(odd) { border-right: 1px solid var(--grid); }
+.kpis b { display: block; margin-top: 6px; font: 600 20px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.startbal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 4px; }
+.startbal input { width: 100px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); border-radius: 6px; padding: 2px 6px; font: 12px ui-monospace, monospace; }
+.tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--grid); margin-top: 10px; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 0; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
+.feed { max-height: 520px; overflow: auto; }
+.entry { display: grid; grid-template-columns: 64px 1fr; gap: 2px 12px; padding: 10px 6px; border-bottom: 1px solid var(--grid); border-left: 3px solid transparent; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
+.entry:hover, .entry.sel { background: var(--wash); }
+.entry .act { align-self: center; color: var(--muted); }
+.entry.acted { border-left-color: var(--accent); }
+.entry.acted .act { color: var(--accent); font-weight: 600; }
+.entry .px { font-size: 14px; font-weight: 600; color: var(--ink); }
+.meta { color: var(--muted); }
+.trade { border-left: 3px solid var(--muted); padding: 10px 12px; margin: 10px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.trade.long { border-color: var(--long); } .trade.short { border-color: var(--short); }
+.trade .hd { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; }
+.trade b { display: block; color: var(--ink); font-weight: 600; }
+.ptag { font: 600 11px ui-monospace, monospace; }
 code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--wash); border-radius: 4px; padding: 1px 4px; }
 </style>
 </head>
@@ -119,7 +150,7 @@ code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
   <section class="card" id="idle" hidden>
     <h3>No live session</h3>
     <p class="note">This page shows a session started by the live runner. Start one, then reload:</p>
-    <pre>uv run python -m trade_jev.live                                    # live (needs DATABENTO_API_KEY)
+    <pre>uv run python -m trade_jev.live --commission 0.62                  # live on IBKR (MNQ front month)
 uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60  # rehearsal from a recorded day</pre>
   </section>
 
@@ -144,13 +175,34 @@ uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60  # rehearsal f
 
     <section class="card"><div class="health" id="health"></div></section>
 
-    <section class="card">
-      <div class="row" style="justify-content:space-between; margin-bottom:6px">
-        <h3 style="margin:0">Price <span class="sub">· mid, with Jev paper entries and exits</span></h3>
-        <div class="row" id="windows"></div>
-      </div>
-      <svg class="chart" id="chart" height="260" role="img" aria-label="Mid price with Jev entries and exits"></svg>
-    </section>
+    <div class="desk">
+      <section class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom:6px">
+          <div><div class="label">Price action</div><div class="ttl" id="charttitle" style="margin-bottom:0">–</div></div>
+          <div class="row" id="windows"></div>
+        </div>
+        <svg class="chart" id="chart" height="420" role="img" aria-label="Mid-price candles with Jev entries and exits"></svg>
+        <div class="note" style="margin-top:6px">Candles of the mid price · ▲▼ Jev paper entries, ○ exits · dashed line: open entry</div>
+      </section>
+      <section class="card" id="portfolio">
+        <div class="row" style="justify-content:space-between"><span class="label">Paper portfolio</span><span class="label accent">Simulation only</span></div>
+        <div class="ttl">Jev activity</div>
+        <div class="kpis">
+          <div><span class="label">Account</span><b id="k_acct">–</b></div>
+          <div><span class="label">Equity</span><b id="k_eq">–</b></div>
+          <div><span class="label" id="k_posl">Position</span><b id="k_pos">–</b></div>
+          <div><span class="label">Open P&amp;L</span><b id="k_open">–</b></div>
+          <div><span class="label">Closed trades</span><b id="k_n">–</b></div>
+          <div><span class="label">Win rate</span><b id="k_win">–</b></div>
+        </div>
+        <label class="startbal note">Start balance $ <input id="startbal" inputmode="decimal"> <span id="k_unit"></span></label>
+        <div class="tabs" role="tablist">
+          <button role="tab" data-tab="logs" aria-selected="true">Agent logs</button>
+          <button role="tab" data-tab="pos" aria-selected="false">Positions</button>
+        </div>
+        <div class="feed" id="feed"></div>
+      </section>
+    </div>
 
     <section class="card">
       <h3>Paper P&amp;L <span class="sub">· 1 contract each, same fills and costs as the backtest</span></h3>
@@ -159,19 +211,8 @@ uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60  # rehearsal f
 
     <div class="cols">
       <section class="card">
-        <h3>Jev decisions <span class="sub">· newest first; click to see what Jev saw</span></h3>
-        <div class="scroll"><table class="data" id="decs"></table></div>
-      </section>
-      <section class="card">
         <h3>What Jev saw <span class="sub" id="seenat"></span></h3>
-        <pre id="seen" class="muted">Click a decision.</pre>
-      </section>
-    </div>
-
-    <div class="cols">
-      <section class="card">
-        <h3>Jev paper trades</h3>
-        <div class="scroll"><table class="data" id="trades"></table></div>
+        <pre id="seen" class="muted">Click an agent log entry.</pre>
       </section>
       <section class="card">
         <h3>My fills <span class="sub">· log real fills to measure slippage against the paper fills</span></h3>
@@ -190,8 +231,11 @@ uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60  # rehearsal f
 
 <script>
 const $ = (id) => document.getElementById(id);
-const S = { state: null, track: [], win: 1800, sel: null, lastSig: undefined, alerts: false };
-try { S.alerts = localStorage.getItem("jev-live-alerts") === "1"; S.win = +localStorage.getItem("jev-live-win") || 1800; } catch (e) {}
+const S = { state: null, track: [], win: 1800, sel: null, lastSig: undefined, alerts: false, tab: "logs", start: 10000 };
+try {
+  S.alerts = localStorage.getItem("jev-live-alerts") === "1"; S.win = +localStorage.getItem("jev-live-win") || 1800;
+  S.tab = localStorage.getItem("jev-live-tab") || "logs"; S.start = +localStorage.getItem("jev-live-start") || 10000;
+} catch (e) {}
 
 const fmtPx = (v) => v == null ? "–" : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtUsd = (v) => v == null || isNaN(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -212,7 +256,7 @@ function render() {
   if (!st.active) { setStatus("IDLE"); return; }
   setStatus(st.status);
   $("meta").textContent = `${st.symbol} · ${st.day} · ${st.mode === "live" ? "live" : "replay" + (st.speed ? ` ×${st.speed}` : " (max speed)")}${st.run_dir ? " · " + st.run_dir : ""}`;
-  renderSignal(st); renderHealth(st); renderChart(st); renderPnl(st); renderDecs(st); renderTrades(st); renderManual(st);
+  renderSignal(st); renderHealth(st); renderChart(st); renderPnl(st); renderPortfolio(st); renderFeed(st); renderManual(st);
 }
 
 function setStatus(s) {
@@ -263,33 +307,60 @@ function renderHealth(st) {
   $("health").innerHTML = items.map(([k, v]) => `<span>${k} <b>${esc(v)}</b></span>`).join("");
 }
 
+function candles(pts, size, tick) {
+  // per-second [sec, bid, ask] → OHLC of the mid per `size` seconds
+  const out = [];
+  for (const [sec, b, a] of pts) {
+    const m = (b + a) / 2 * tick, t = sec - sec % size, c = out[out.length - 1];
+    if (c && c.t === t) { c.h = Math.max(c.h, m); c.l = Math.min(c.l, m); c.c = m; }
+    else out.push({ t, o: c ? c.c : m, h: Math.max(m, c ? c.c : m), l: Math.min(m, c ? c.c : m), c: m });
+  }
+  return out;
+}
+
+function marker(x, y, side, px, tip) {
+  // entry: triangle pointing up (long) under the price, down (short) above it
+  const d = side > 0 ? 1 : -1, c = side > 0 ? "var(--long)" : "var(--short)";
+  return `<path d="M${x},${y(px) + 3 * d} l-5,${8 * d} l10,0z" fill="${c}"><title>${tip}</title></path>`;
+}
+
 function renderChart(st) {
-  const svg = $("chart"), W = svg.clientWidth || 900, H = 260, L = 64, R = 10, T = 10, B = 22;
+  $("charttitle").textContent = `${st.symbol} · ${st.point_value === 2 ? "Micro E-mini Nasdaq-100" : "E-mini Nasdaq-100"}`;
+  const svg = $("chart"), W = svg.clientWidth || 900, H = 420, L = 10, R = 80, T = 10, B = 22;
   const tr = S.track; if (!tr.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">waiting for data</text>`; return; }
+  const size = { 900: 15, 1800: 30, 3600: 60 }[S.win] || 30;
   const t1 = tr[tr.length - 1][0], t0 = t1 - S.win;
-  const pts = tr.filter((p) => p[0] >= t0);
-  const mids = pts.map((p) => (p[1] + p[2]) / 2 * st.tick);
-  let lo = Math.min(...mids), hi = Math.max(...mids); if (hi - lo < 2) { lo -= 1; hi += 1; }
+  const cs = candles(tr.filter((p) => p[0] >= t0 - size), size, st.tick).filter((c) => c.t >= t0);
+  if (!cs.length) return;
+  let lo = Math.min(...cs.map((c) => c.l)), hi = Math.max(...cs.map((c) => c.h)); if (hi - lo < 2) { lo -= 1; hi += 1; }
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
-  const x = (t) => L + (t - t0) / (t1 - t0 || 1) * (W - L - R), y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const x = (t) => L + (t - t0) / (t1 + size - t0) * (W - L - R), y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const bw = Math.max(1, (W - L - R) / (S.win / size) * 0.7);
   let g = "";
-  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200].find((s) => (hi - lo) / s <= 5) || 500;
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) { g += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmtPx(v)}</text>`; }
-  for (let i = 0; i <= 4; i++) { const t = t0 + S.win * i / 4; g += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${new Date(t * 1000).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false })}</text>`; }
-  // open position band
+  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200].find((s) => (hi - lo) / s <= 7) || 500;
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) g += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${W - R + 6}" y="${y(v) + 4}">${fmtPx(v)}</text>`;
+  for (let i = 0; i <= 4; i++) { const t = t0 + S.win * i / 4; g += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${new Date(t * 1000).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" })}</text>`; }
+  for (const c of cs) {
+    const col = c.c >= c.o ? "var(--up)" : "var(--down)", cx = x(c.t + size / 2);
+    const top = y(Math.max(c.o, c.c)), h = Math.max(1, Math.abs(y(c.o) - y(c.c)));
+    g += `<line x1="${cx}" x2="${cx}" y1="${y(c.h)}" y2="${y(c.l)}" stroke="${col}"/><rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${h}" fill="${col}"/>`;
+  }
   const pol = st.policies[st.signal_policy];
+  for (const t of (pol?.trades || [])) {
+    const es = t.entry_ns / 1e9, xs = t.exit_ns / 1e9, c = t.side > 0 ? "var(--long)" : "var(--short)";
+    if (es >= t0) g += marker(x(es), y, t.side, t.entry_px, `${sideWord(t.side)} ${fmtPx(t.entry_px)} at ${t.entry_et}`);
+    if (xs >= t0) g += `<circle cx="${x(xs)}" cy="${y(t.exit_px)}" r="4" fill="var(--surface)" stroke="${c}" stroke-width="2"><title>exit (${t.reason}) ${fmtPx(t.exit_px)} at ${t.exit_et}: ${fmtUsd(t.pnl)}</title></circle>`;
+  }
   if (pol && pol.side) {
     const e = pol.entry_px, c = pol.side > 0 ? "var(--long)" : "var(--short)";
     g += `<line x1="${L}" x2="${W - R}" y1="${y(e)}" y2="${y(e)}" stroke="${c}" stroke-dasharray="4 3"/>`;
+    const es = st.signal.side === pol.side && st.signal.t_ns ? st.signal.t_ns / 1e9 : -Infinity;  // fill time of the open position
+    if (es >= t0) g += marker(x(es), y, pol.side, e, `open ${sideWord(pol.side)} ${fmtPx(e)} at ${pol.entry_et}`);
   }
-  g += `<polyline fill="none" stroke="var(--ink-2)" stroke-width="1.5" points="${pts.map((p, i) => `${x(p[0]).toFixed(1)},${y(mids[i]).toFixed(1)}`).join(" ")}"/>`;
-  for (const t of (pol?.trades || [])) {
-    const es = t.entry_ns / 1e9, xs = t.exit_ns / 1e9, c = t.side > 0 ? "var(--long)" : "var(--short)";
-    // entry: triangle pointing up (long) under the price, down (short) above it
-    const d = t.side > 0 ? 1 : -1;
-    if (es >= t0) g += `<path d="M${x(es)},${y(t.entry_px) + 3 * d} l-5,${8 * d} l10,0z" fill="${c}"><title>${t.side > 0 ? "long" : "short"} ${fmtPx(t.entry_px)} at ${t.entry_et}</title></path>`;
-    if (xs >= t0) g += `<circle cx="${x(xs)}" cy="${y(t.exit_px)}" r="4" fill="var(--surface)" stroke="${c}" stroke-width="2"><title>exit (${t.reason}) ${fmtPx(t.exit_px)} at ${t.exit_et}: ${fmtUsd(t.pnl)}</title></circle>`;
-  }
+  const last = cs[cs.length - 1].c;
+  g += `<line x1="${L}" x2="${W - R}" y1="${y(last)}" y2="${y(last)}" stroke="var(--accent)" stroke-dasharray="2 3"/>` +
+       `<rect x="${W - R + 2}" y="${y(last) - 9}" width="${R - 4}" height="18" rx="3" fill="var(--accent)"/>` +
+       `<text class="ptag" x="${W - R + 6}" y="${y(last) + 4}" style="fill:var(--page)">${fmtPx(last)}</text>`;
   svg.innerHTML = g;
 }
 
@@ -304,22 +375,48 @@ function renderPnl(st) {
     }).join("") + "</tbody>";
 }
 
-function renderDecs(st) {
-  const rows = st.decisions.slice(-150).reverse();
-  if (!rows.length) { $("decs").innerHTML = `<tbody><tr><td class="empty">No answers yet. The first decision is at ${st.settings.start_et} ET.</td></tr></tbody>`; return; }
-  $("decs").innerHTML = `<thead><tr><th>Time ET</th><th>Answer</th><th>p</th><th>Acted</th><th>Position</th><th>ms</th></tr></thead><tbody>` +
-    rows.map((d) => {
-      const p = d.p?.[d.raw]; const acted = d.action !== "HOLD";
-      return `<tr class="click ${S.sel === d.i ? "sel" : ""}" data-i="${d.i}"><td>${d.et}</td><td>${d.raw}${d.err ? " ⚠" : ""}</td><td>${p != null ? (p * 100).toFixed(0) + "%" : "–"}</td>
-        <td>${acted ? "<b>" + d.action + "</b>" : "–"}</td><td>${sideWord(d.pos)}</td><td>${d.jev_ms != null && !st.jev?.stored ? Math.round(d.jev_ms) : "–"}</td></tr>`;
-    }).join("") + "</tbody>";
+const fmtUsd2 = (v) => v == null || isNaN(v) ? "–" : (v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function renderPortfolio(st) {
+  const p = st.policies[st.signal_policy]; if (!p) return;
+  const u = unreal(p, st), wins = p.trades.filter((t) => t.pnl > 0).length;
+  $("k_acct").textContent = fmtUsd2(S.start + p.realized);
+  $("k_eq").textContent = fmtUsd2(S.start + p.realized + u);
+  $("k_posl").textContent = `${st.symbol} position`;
+  $("k_pos").textContent = p.side ? `${p.side > 0 ? "Long" : "Short"} 1` : "Flat";
+  $("k_pos").style.color = p.side > 0 ? "var(--long)" : p.side < 0 ? "var(--short)" : "";
+  $("k_open").innerHTML = p.side ? `<span class="${cls(u)}">${fmtUsd2(u)}</span>` : "–";
+  $("k_n").textContent = p.n_trades;
+  $("k_win").textContent = p.trades.length ? `${Math.round(wins / p.trades.length * 100)}%` : "–";
+  $("k_unit").textContent = `· 1 contract · $${st.point_value}/pt · ${fmtUsd2(st.settings.commission)}/side`;
+  if (document.activeElement !== $("startbal")) $("startbal").value = S.start;
 }
 
-function renderTrades(st) {
-  const tr = (st.policies[st.signal_policy]?.trades || []).slice().reverse();
-  $("trades").innerHTML = tr.length ? `<thead><tr><th>Side</th><th>Entry ET</th><th>Entry</th><th>Exit ET</th><th>Exit</th><th>Why</th><th>P&amp;L</th></tr></thead><tbody>` +
-    tr.map((t) => `<tr><td>${t.side > 0 ? "long" : "short"}</td><td>${t.entry_et}</td><td>${fmtPx(t.entry_px)}</td><td>${t.exit_et}</td><td>${fmtPx(t.exit_px)}</td><td>${t.reason}</td><td class="${cls(t.pnl)}">${fmtUsd(t.pnl)}</td></tr>`).join("") + "</tbody>"
-    : `<tbody><tr><td class="empty">No closed trades yet.</td></tr></tbody>`;
+function renderFeed(st) {
+  [...document.querySelectorAll(".tabs button")].forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
+  if (S.tab === "pos") {
+    const p = st.policies[st.signal_policy], cards = [];
+    if (p?.side) {
+      const u = unreal(p, st);
+      cards.push(`<div class="trade ${sideWord(p.side)}"><div class="hd"><span class="label accent">${st.symbol} ${sideWord(p.side)} · open</span><span class="meta">${p.entry_et} ET</span></div>
+        <div><span class="label">Entry</span><b>${fmtPx(p.entry_px)}</b></div><div><span class="label">Open P&amp;L</span><b class="${cls(u)}">${fmtUsd2(u)}</b></div></div>`);
+    }
+    for (const t of (p?.trades || []).slice().reverse()) cards.push(`<div class="trade ${sideWord(t.side)}">
+      <div class="hd"><span class="label">${st.symbol} ${sideWord(t.side)} · ${esc(t.reason)}</span><span class="meta">${t.entry_et}–${t.exit_et}</span></div>
+      <div><span class="label">Entry</span><b>${fmtPx(t.entry_px)}</b></div><div><span class="label">Exit</span><b>${fmtPx(t.exit_px)}</b></div>
+      <div><span class="label">Points</span><b>${t.points > 0 ? "+" : ""}${t.points}</b></div><div><span class="label">Realized P&amp;L</span><b class="${cls(t.pnl)}">${fmtUsd2(t.pnl)}</b></div></div>`);
+    $("feed").innerHTML = cards.join("") || `<div class="empty">No positions yet.</div>`;
+    return;
+  }
+  const rows = st.decisions.slice(-200).reverse();
+  $("feed").innerHTML = rows.length ? rows.map((d) => {
+    const p = d.p?.[d.raw], acted = d.action !== "HOLD";
+    return `<div class="entry ${acted ? "acted" : ""} ${S.sel === d.i ? "sel" : ""}" data-i="${d.i}">
+      <span class="act">${acted ? d.action : d.raw}</span>
+      <div><div class="px">${fmtUsd2(d.mid)}</div>
+      <div class="meta">${p != null ? Math.round(p * 100) + "% confidence" : "no answer"}${acted ? " · acted" : d.raw !== "HOLD" ? " · not acted" : ""}${d.err ? " · ⚠ " + esc(d.err) : ""}</div>
+      <div class="meta">${d.et} ET${d.jev_ms != null && !st.jev?.stored ? " · " + Math.round(d.jev_ms) + " ms" : ""}</div></div></div>`;
+  }).join("") : `<div class="empty">No answers yet. The first decision is at ${st.settings.start_et} ET.</div>`;
 }
 
 function renderManual(st) {
@@ -382,7 +479,7 @@ function onTick(q) {
   st.quote = q; st.status = q.status;
   const sec = Math.floor(q.ts / 1e9), last = S.track[S.track.length - 1];
   if (last && last[0] === sec) { last[1] = q.bid; last[2] = q.ask; } else if (!last || sec > last[0]) S.track.push([sec, q.bid, q.ask]);
-  setStatus(q.status); renderHealth(st); renderChart(st); renderPnl(st);
+  setStatus(q.status); renderHealth(st); renderChart(st); renderPnl(st); renderPortfolio(st);
   if (st.signal.side) renderSignal(st);
 }
 
@@ -403,9 +500,9 @@ function countdown() {
   $("countdown").textContent = `next answer in ${Math.max(0, Math.round(next - now))}s`;
 }
 
-$("decs").addEventListener("click", async (e) => {
-  const tr = e.target.closest("tr[data-i]"); if (!tr) return;
-  S.sel = +tr.dataset.i; renderDecs(S.state);
+$("feed").addEventListener("click", async (e) => {
+  const tr = e.target.closest("[data-i]"); if (!tr) return;
+  S.sel = +tr.dataset.i; renderFeed(S.state);
   const d = await (await fetch("/api/live/decision?i=" + S.sel)).json();
   $("seenat").textContent = `· ${d.time_et} ET → ${d.raw_action || d.action}`;
   $("seen").classList.remove("muted");
@@ -442,6 +539,16 @@ $("theme").onclick = () => {
   try { localStorage.setItem("jev-viewer-theme", next); } catch (e) {}
   paintTheme(); if (S.state) render();
 };
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]"); if (!b) return;
+  S.tab = b.dataset.tab; try { localStorage.setItem("jev-live-tab", S.tab); } catch (e) {}
+  if (S.state) renderFeed(S.state);
+});
+$("startbal").addEventListener("change", () => {
+  const v = parseFloat($("startbal").value); if (!(v > 0)) return;
+  S.start = v; try { localStorage.setItem("jev-live-start", v); } catch (e) {}
+  if (S.state) renderPortfolio(S.state);
+});
 window.addEventListener("resize", () => S.state && renderChart(S.state));
 
 paintTheme(); paintAlerts();
