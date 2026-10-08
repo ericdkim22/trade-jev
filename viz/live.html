@@ -205,7 +205,7 @@ uv run python -m trade_jev.live --from-file 2026-06-23 --speed 60  # rehearsal f
     </div>
 
     <section class="card">
-      <h3>Paper P&amp;L <span class="sub">· 1 contract each, same fills and costs as the backtest</span></h3>
+      <h3>Jev vs. benchmarks <span class="sub">· each row is its own paper trader on the same feed, 1 contract, same fills and costs</span></h3>
       <table class="data" id="pnl"></table>
     </section>
 
@@ -367,10 +367,17 @@ function renderChart(st) {
 function renderPnl(st) {
   const names = Object.keys(st.policies);
   const col = (n) => n.startsWith("jev") ? "var(--p1)" : { random: "var(--neutral)", imbalance: "var(--p4)", hold: "var(--axis)" }[n] || "var(--p2)";
-  $("pnl").innerHTML = `<thead><tr><th>Policy</th><th>Position</th><th>Entry</th><th>Open P&amp;L</th><th>Closed P&amp;L</th><th>Trades</th><th>Total</th></tr></thead><tbody>` +
+  const about = {
+    hold: ["Do nothing", "never trades; should stay $0"],
+    random: ["Random", "buys or sells at random on ~20% of decisions: what costs alone do"],
+    imbalance: ["Imbalance rule", "buys when bids outweigh asks and buyers lead the last 60s; sells on the reverse"],
+  };
+  const label = (n) => n.startsWith("jev") ? ["Jev", "the strategy: acts on 4 agreeing answers ≥ " + st.settings.min_conf] : about[n] || [n, ""];
+  $("pnl").innerHTML = `<thead><tr><th>Strategy</th><th>Position</th><th>Entry</th><th>Open P&amp;L</th><th>Closed P&amp;L</th><th>Trades</th><th>Total</th></tr></thead><tbody>` +
     names.map((n) => {
       const p = st.policies[n], u = unreal(p, st);
-      return `<tr><td><span class="sw" style="background:${col(n)}"></span>${esc(n)}</td><td>${sideWord(p.side)}</td><td>${p.side ? fmtPx(p.entry_px) : "–"}</td>
+      const [name, desc] = label(n);
+      return `<tr><td><span class="sw" style="background:${col(n)}"></span>${n.startsWith("jev") ? "<b>" + name + "</b>" : name}<div class="note" style="white-space:normal">${esc(desc)}</div></td><td>${sideWord(p.side)}</td><td>${p.side ? fmtPx(p.entry_px) : "–"}</td>
         <td class="${cls(u)}">${p.side ? fmtUsd(u) : "–"}</td><td class="${cls(p.realized)}">${fmtUsd(p.realized)}</td><td>${p.n_trades}</td><td class="${cls(p.realized + u)}"><b>${fmtUsd(p.realized + u)}</b></td></tr>`;
     }).join("") + "</tbody>";
 }
