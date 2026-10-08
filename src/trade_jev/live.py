@@ -37,7 +37,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from trade_jev import ROOT
-from trade_jev.data import (ET, LEVELS, LIVE_DIR, TICK, Day, decision_grid, et_to_ns, list_days,
+from trade_jev.data import (_NAME, ET, LEVELS, LIVE_DIR, TICK, Day, decision_grid, et_to_ns, list_days,
                             ns_to_et, point_value, secs)
 from trade_jev.encode import LOOKBACKS, Context
 from trade_jev.harness import Book, Config, DayResult
@@ -321,7 +321,9 @@ class IBSource:
 
 
 class Recorder:
-    """Writes the live feed to data/live/ in the day-file format, so it loads with `load_day`."""
+    """Writes the live feed to data/live/ in the day-file format, so it loads with `load_day`.
+    Rows go to small complete part files (every `rows_per_group` rows or `flush_s` seconds), which `close` merges
+    into the day file, so a crash loses at most the last `flush_s` and a restart the same day appends to the day."""
 
     SCHEMA = pa.schema([
         ("ts_event", pa.timestamp("ns", tz="UTC")), ("instrument_id", pa.int64()),
@@ -330,21 +332,25 @@ class Recorder:
         ("trade_delta", pa.int64()),
     ])
 
-    def __init__(self, day: str, symbol: str, out_dir: Path = LIVE_DIR, rows_per_group: int = 100_000):
-        out_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, day: str, symbol: str, out_dir: Path = LIVE_DIR, rows_per_group: int = 100_000,
+                 flush_s: float = 60.0):
         self.path = out_dir / f"GLBX.MDP3__{symbol}__mbp-10__rth__{day}__live.parquet"
-        self.day, self.symbol, self.rows_per_group = day, symbol, rows_per_group
-        self.writer = pq.ParquetWriter(self.path, self.SCHEMA)
+        self.parts = parts_dir(self.path)
+        self.parts.mkdir(parents=True, exist_ok=True)
+        self.day, self.symbol, self.rows_per_group, self.flush_s = day, symbol, rows_per_group, flush_s
+        self.n_part = len(list(self.parts.glob("*.parquet")))  # a restart continues the numbering
         self.pending: list[Batch] = []
         self.n_pending = self.rows = 0
+        self.last_flush = time.monotonic()
 
     def add(self, b: Batch) -> None:
         self.pending.append(b)
         self.n_pending += len(b)
-        if self.n_pending >= self.rows_per_group:
+        if self.n_pending >= self.rows_per_group or time.monotonic() - self.last_flush >= self.flush_s:
             self.flush()
 
     def flush(self) -> None:
+        self.last_flush = time.monotonic()
         if not self.pending:
             return
         b = Batch(*(np.concatenate([getattr(p, f.name) for p in self.pending]) for f in fields(Batch)))
@@ -361,16 +367,46 @@ class Recorder:
             "ask_px": lists(b.ask_px, True), "ask_sz": lists(b.ask_sz, False),
             "trade_delta": pa.array(b.delta),
         }, schema=self.SCHEMA)
-        self.writer.write_table(tbl)
+        self.n_part += 1
+        tmp = self.parts / f"{self.n_part:06d}.tmp"
+        pq.write_table(tbl, tmp)
+        tmp.replace(tmp.with_suffix(".parquet"))  # a part file is complete or absent
         self.rows += n
         self.pending, self.n_pending = [], 0
 
     def close(self) -> None:
         self.flush()
-        self.writer.close()
-        self.path.with_suffix(".json").write_text(json.dumps({
-            "dataset": "GLBX.MDP3", "symbol": self.symbol, "schema": "mbp-10", "day": self.day,
-            "session": "rth", "rows": self.rows, "source": "trade_jev.live"}, indent=2))
+        self.rows = merge_parts(self.path)
+
+
+def parts_dir(day_path: Path) -> Path:
+    return day_path.parent / "parts" / day_path.stem
+
+
+def merge_parts(day_path: Path) -> int:
+    """Append a day's part files (left by a session, finished or crashed) to its day file. Returns the day's rows."""
+    parts = sorted(parts_dir(day_path).glob("*.parquet"))
+    if parts:
+        tables = ([pq.read_table(day_path)] if day_path.exists() else []) + [pq.read_table(f) for f in parts]
+        tmp = day_path.with_suffix(".tmp")
+        pq.write_table(pa.concat_tables(tables).cast(Recorder.SCHEMA), tmp, row_group_size=100_000)
+        tmp.replace(day_path)
+        for f in parts:
+            f.unlink()
+        parts_dir(day_path).rmdir()
+    rows = pq.ParquetFile(day_path).metadata.num_rows if day_path.exists() else 0
+    m = _NAME.fullmatch(day_path.name)
+    day_path.with_suffix(".json").write_text(json.dumps({
+        "dataset": "GLBX.MDP3", "symbol": m["sym"], "schema": "mbp-10", "day": m["day"],
+        "session": "rth", "rows": rows, "source": "trade_jev.live"}, indent=2))
+    return rows
+
+
+def merge_leftover_parts(out_dir: Path = LIVE_DIR) -> None:
+    """Days whose session died before `close` (crash, kill, reboot): merge what was recorded."""
+    for d in sorted((out_dir / "parts").glob("*")):
+        rows = merge_parts(out_dir / f"{d.name}.parquet")
+        print(f"recovered {d.name}: {rows:,} rows", flush=True)
 
 
 # ---------------------------------------------------------------- policies
@@ -918,6 +954,7 @@ async def amain() -> None:
             source = DatabentoSource(symbol, start_ns, stop_ns)
         run_dir = None if args.no_save else new_run_dir("live", day)
         if not args.no_save:
+            merge_leftover_parts()
             recorder = Recorder(day, symbol)
         print(f"{symbol} live from {'now' if start_ns is None else ns_to_et(start_ns) + ' ET (intraday replay)'}; "
               f"decisions {cfg.start_et}–{cfg.end_et} ET every {cfg.cadence_s:g}s", flush=True)

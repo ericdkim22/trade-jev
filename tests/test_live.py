@@ -3,12 +3,13 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import numpy as np
+import pyarrow.parquet as pq
 
 from trade_jev.data import ET, LEVELS, TICK, Day, et_to_ns, load_day, secs
 from trade_jev.encode import Context, Position
 from trade_jev.harness import Config, run_day
 from trade_jev.live import (UNDEF, Batch, Engine, Guarded, LiveDay, ParquetSource, Recorder, front_month,
-                            ib_row, mbp10_row)
+                            ib_row, mbp10_row, merge_leftover_parts)
 from trade_jev.policies import Decision, Gated
 from trade_jev.settings import Settings
 
@@ -184,3 +185,22 @@ def test_ib_row_pads_levels_and_signs_trades():
 def test_front_month_micro():
     assert front_month(datetime(2026, 10, 8, tzinfo=ET), "MNQ") == "MNQZ6"
     assert front_month(datetime(2026, 12, 10, tzinfo=ET), "MNQ") == "MNQH7"
+
+
+def test_recorder_survives_a_crash_and_a_restart(tmp_path):
+    b = synthetic(n_sec=120)
+    half = len(b) // 2
+    rec = Recorder(DAY, "NQU6", out_dir=tmp_path, rows_per_group=100)
+    for i in range(0, half, 33):
+        rec.add(b[i:min(i + 33, half)])
+    # crash: never closed; only complete part files are on disk
+    merge_leftover_parts(tmp_path)
+    kept = pq.ParquetFile(rec.path).metadata.num_rows
+    assert 0 < kept <= half  # only the unflushed tail is lost
+    # restart the same day: appends to the day file
+    rec2 = Recorder(DAY, "NQU6", out_dir=tmp_path, rows_per_group=100)
+    rec2.add(b[kept:])
+    rec2.close()
+    day = load_day(DAY, b.ts[[10, len(b) - 1]], data_dir=tmp_path)
+    assert np.array_equal(day.ts, b.ts) and np.array_equal(day.cum_delta, np.cumsum(b.delta))
+    assert not (tmp_path / "parts").exists() or not any((tmp_path / "parts").iterdir())

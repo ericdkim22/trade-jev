@@ -92,7 +92,7 @@ uv run python -m trade_jev.live --root NQ                          # IBKR, NQ
 
 Every weekday it runs by itself: the Windows scheduled task `trade-jev-live` starts `scripts/live_daily.cmd` at
 09:15 ET (log in `logs/live.log`), retries 3 times 5 minutes apart if the Gateway isn't up, and is stopped after
-14 hours. Each session writes `runs/live-<day>/` and records the feed to `data/live/`. The dashboard is at
+14 hours. Each session writes `runs/live-<day>/` and records the feed (10-level book + trades) to `data/live/`, in 1-minute part files merged into the day file at the close; a crash loses at most the last minute, and parts left by a crash are merged when the next session starts. The dashboard is at
 http://localhost:8765/live while it runs. On a market holiday it waits for data and exits at 16:00 ET.
 
 **Databento feed:**
