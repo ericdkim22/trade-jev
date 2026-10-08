@@ -309,6 +309,8 @@ class IBSource:
                 await asyncio.sleep(self.flush_s)
                 if fatal:
                     raise RuntimeError(f"IBKR {self.symbol}: {fatal[0]}")
+                if self.stop_ns and time.time_ns() > self.stop_ns:  # also ends a quiet feed (holiday)
+                    break
                 if rows:
                     out, rows[:] = list(rows), []
                     yield rows_to_batch(out)

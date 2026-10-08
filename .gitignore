@@ -14,3 +14,4 @@ runs/*
 
 # days recorded by the live runner (licensed data)
 data/live/
+logs/
