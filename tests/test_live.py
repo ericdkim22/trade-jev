@@ -256,3 +256,42 @@ def test_features_encoder_is_labeled_and_json_ready():
     assert s["spread_ticks"] >= 1 and len(s["summary"]) == 3 and "order_book" not in s
     assert s["net_aggressor_volume"]["last_60s"] == ctx.delta_since(60)
     assert s["instrument"] == ENCODERS["raw_l10"](ctx)["instrument"]
+
+
+def test_ibkr_feed_resubscribes_when_connected_but_silent(monkeypatch):
+    import time as _time
+    import ib_async
+    import trade_jev.live as live
+
+    class Event(list):
+        def __iadd__(self, f):
+            self.append(f)
+            return self
+
+    connects = []
+
+    class FakeIB:  # connected, subscribed, never sends data (IBKR error 1100)
+        def __init__(self):
+            self.errorEvent, self.pendingTickersEvent = Event(), Event()
+        async def connectAsync(self, *a, **k):
+            connects.append(_time.monotonic())
+        async def qualifyContractsAsync(self, c):
+            return [c]
+        def reqMktDepth(self, *a, **k):
+            return object()
+        def reqTickByTickData(self, *a, **k):
+            pass
+        def isConnected(self):
+            return True
+        def disconnect(self):
+            pass
+
+    monkeypatch.setattr(ib_async, "IB", FakeIB)
+    monkeypatch.setattr(live, "FEED_SILENT_S", 0.2)
+    monkeypatch.setattr(live, "RECONNECT_S", 0.05)
+    src = live.IBSource("MNQZ6", _time.time_ns() + int(1.2e9), flush_s=0.02)
+
+    async def drain():
+        return [b async for b in src.batches()]
+    assert asyncio.run(drain()) == []  # ends at stop_ns
+    assert len(connects) >= 3  # silent → resubscribed, more than once

@@ -49,6 +49,8 @@ from trade_jev.settings import DEFAULT, Settings
 STALE_S = 5.0          # no feed records for this long during the session → STALE
 CATCH_UP_S = 30.0      # a decision older than this (wall clock) is catch-up: shown, never alerted
 RECONNECT_S = 10.0     # IBKR feed: wait between reconnect attempts
+FEED_SILENT_S = 30.0   # IBKR feed: no book rows this long while connected → resubscribe (IBKR error 1100 leaves
+                       # the Gateway connected with no data: 2026-10-09 15:00, an hour lost)
 
 
 # ---------------------------------------------------------------- growing day
@@ -282,6 +284,7 @@ class IBSource:
         """Reconnects after a dropped connection or a Gateway that isn't up yet, until `stop_ns`."""
         from ib_async import IB, Future
         last_ts = [0]
+        log = lambda msg: print(f"[ibkr {datetime.now(ET):%H:%M:%S}] {msg}", flush=True)  # noqa: E731
         over = lambda: self.stop_ns and time.time_ns() > self.stop_ns  # noqa: E731 - also ends a quiet feed (holiday)
         while not over():
             self.ib = ib = IB()
@@ -296,7 +299,8 @@ class IBSource:
                 [c] = await ib.qualifyContractsAsync(Future(localSymbol=self.symbol, exchange="CME"))
                 ticker = ib.reqMktDepth(c, numRows=LEVELS, isSmartDepth=False)
                 ib.reqTickByTickData(c, "AllLast")
-                print(f"[ibkr] {self.symbol} depth + trades subscribed", flush=True)
+                log(f"{self.symbol} depth + trades subscribed")
+                last_row = time.monotonic()
                 rows: list[tuple] = []
                 prev: list[tuple[int, int] | None] = [None]  # a fresh book after a reconnect: no trade sides yet
 
@@ -314,21 +318,26 @@ class IBSource:
                     if fatal:
                         raise RuntimeError(f"IBKR {self.symbol}: {fatal[0]}")
                     if rows:
+                        last_row = time.monotonic()
                         out, rows[:] = list(rows), []
                         yield rows_to_batch(out)
                         if self.stop_ns and out[-1][0] > self.stop_ns:
                             return
                     if over():
                         return
-                print("[ibkr] disconnected", flush=True)
+                    if time.monotonic() - last_row > FEED_SILENT_S:
+                        log(f"no data for {FEED_SILENT_S:g}s while connected; resubscribing")
+                        break
+                else:
+                    log("disconnected")
             except RuntimeError:
                 raise
             except Exception as e:  # noqa: BLE001 - Gateway down / restarting: retry
-                print(f"[ibkr] {type(e).__name__}: {e}", flush=True)
+                log(f"{type(e).__name__}: {e}")
             finally:
                 ib.disconnect()
             if not over():
-                print(f"[ibkr] reconnecting in {RECONNECT_S:g}s", flush=True)
+                log(f"reconnecting in {RECONNECT_S:g}s")
                 await asyncio.sleep(RECONNECT_S)
 
 
