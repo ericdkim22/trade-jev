@@ -409,7 +409,7 @@ function renderFeed(st) {
         <div><span class="label">Entry</span><b>${fmtPx(p.entry_px)}</b></div><div><span class="label">Open P&amp;L</span><b class="${cls(u)}">${fmtUsd2(u)}</b></div></div>`);
     }
     for (const t of (p?.trades || []).slice().reverse()) cards.push(`<div class="trade ${sideWord(t.side)}">
-      <div class="hd"><span class="label">${st.symbol} ${sideWord(t.side)} · ${esc(t.reason)}</span><span class="meta">${t.entry_et}–${t.exit_et}</span></div>
+      <div class="hd"><span class="label">${st.symbol} ${sideWord(t.side)} · ${esc(t.reason)}${t.earlier ? " · earlier session" : ""}</span><span class="meta">${t.entry_et}–${t.exit_et}</span></div>
       <div><span class="label">Entry</span><b>${fmtPx(t.entry_px)}</b></div><div><span class="label">Exit</span><b>${fmtPx(t.exit_px)}</b></div>
       <div><span class="label">Points</span><b>${t.points > 0 ? "+" : ""}${t.points}</b></div><div><span class="label">Realized P&amp;L</span><b class="${cls(t.pnl)}">${fmtUsd2(t.pnl)}</b></div></div>`);
     $("feed").innerHTML = cards.join("") || `<div class="empty">No positions yet.</div>`;

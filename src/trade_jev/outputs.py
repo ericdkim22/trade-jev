@@ -35,6 +35,20 @@ def write_equity(out: Path, day, grid: np.ndarray, day_results: list[DayResult])
     (eq_dir / f"{day.day}.json").write_text(json.dumps(eq))
 
 
+def write_trades(path: Path, trades: list[Trade]) -> None:
+    with path.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=[f.name for f in fields(Trade)])
+        w.writeheader()
+        w.writerows(asdict(t) for t in trades)
+
+
+def read_trades(path: Path) -> list[Trade]:
+    types = {f.name: f.type for f in fields(Trade)}
+    conv = {"int": int, "float": float, "str": str}
+    with path.open(newline="") as fh:
+        return [Trade(**{k: conv[types[k]](v) for k, v in row.items()}) for row in csv.DictReader(fh)]
+
+
 def write_results(out: Path, run_id: str, results: dict[str, list[DayResult]], days: list[str],
                   cfg: Config, *, wall_s: float, snapshots: int, book_rows: int,
                   jev_policies: list, encoder: str, model: str, gate: dict,
@@ -50,11 +64,7 @@ def write_results(out: Path, run_id: str, results: dict[str, list[DayResult]], d
             for r in sorted(rs, key=lambda r: r.day):
                 for dec in r.decisions:
                     fh.write(json.dumps(dec) + "\n")
-        with (pdir / "trades.csv").open("w", newline="") as fh:
-            w = csv.DictWriter(fh, fieldnames=[f.name for f in fields(Trade)])
-            w.writeheader()
-            for r in sorted(rs, key=lambda r: r.day):
-                w.writerows(asdict(t) for t in r.trades)
+        write_trades(pdir / "trades.csv", [t for r in sorted(rs, key=lambda r: r.day) for t in r.trades])
         summary[name] = {s: summarize([r for r in rs if r.day in ds]) for s, ds in splits.items()}
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
 

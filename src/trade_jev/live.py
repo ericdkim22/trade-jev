@@ -42,7 +42,7 @@ from trade_jev.data import (_NAME, ET, LEVELS, LIVE_DIR, TICK, Day, decision_gri
 from trade_jev.encode import LOOKBACKS, Context
 from trade_jev.harness import Book, Config, DayResult
 from trade_jev.metrics import JEV_USD_PER_TOKEN
-from trade_jev.outputs import print_results, write_config, write_equity, write_results
+from trade_jev.outputs import print_results, read_trades, write_config, write_equity, write_results, write_trades
 from trade_jev.policies import BASELINES, Decision, Gated, JevPolicy, JsonlCache, RateLimiter
 from trade_jev.settings import DEFAULT, Settings
 
@@ -638,6 +638,19 @@ class Bus:
                     pass
 
 
+def earlier_trades(runs_dir: Path, day: str, own: Path | None) -> dict[str, list]:
+    """Trades saved by earlier live sessions of `day` (before a restart), per policy, oldest first."""
+    out: dict[str, list] = {}
+    for d in sorted(runs_dir.glob(f"live-{day}*")):
+        if own is not None and d.resolve() == own.resolve():
+            continue
+        for f in sorted(d.glob("*/trades.csv")):
+            out.setdefault(f.parent.name, []).extend(read_trades(f))
+    for ts in out.values():
+        ts.sort(key=lambda t: t.entry_ns)
+    return out
+
+
 class Session:
     def __init__(self, args, cfg: Config, gate: Settings, day: str, symbol: str, source, jev,
                  baselines: list[str], run_dir: Path | None, recorder: Recorder | None):
@@ -661,6 +674,7 @@ class Session:
         self.written = False
         self.t_start = time.time()
         self.dec_fh = None
+        self.earlier = earlier_trades(ROOT / "runs", day, run_dir) if self.mode == "live" else {}
         if run_dir and self.engine.jev_name:
             p = run_dir / self.engine.jev_name / "decisions.jsonl"
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -752,6 +766,10 @@ class Session:
             self.dec_fh.flush()
         if kind in ("fill", "exit", "closed") and (kw.get("policy") in (None, jn)):
             self._update_signal(kind, kw)
+        if kind in ("fill", "exit", "closed") and self.run_dir:
+            for name in [kw["policy"]] if kw.get("policy") else list(e.results):
+                (self.run_dir / name).mkdir(parents=True, exist_ok=True)
+                write_trades(self.run_dir / name / "trades.csv", e.results[name].trades)
         self.dirty = True
 
     def _update_signal(self, kind: str, kw: dict) -> None:
@@ -785,12 +803,15 @@ class Session:
         pols = {}
         for name, bk in e.books.items():
             r = e.results[name]
+            before = self.earlier.get(name, [])
+            day_trades = [(t, True) for t in before] + [(t, False) for t in r.trades]
             pols[name] = {
                 "side": bk.pos.side, "entry_px": bk.pos.entry_px if bk.pos.side else None,
                 "entry_et": ns_to_et(bk.pos.entry_ns) if bk.pos.side else None,
-                "realized": round(sum(t.pnl for t in r.trades), 2), "n_trades": len(r.trades),
-                "trades": [{**asdict(t), "entry_et": ns_to_et(t.entry_ns), "exit_et": ns_to_et(t.exit_ns)}
-                           for t in r.trades[-200:]],
+                "realized": round(sum(t.pnl for t, _ in day_trades), 2), "n_trades": len(day_trades),
+                "n_earlier": len(before),
+                "trades": [{**asdict(t), "entry_et": ns_to_et(t.entry_ns), "exit_et": ns_to_et(t.exit_ns),
+                            "earlier": old} for t, old in day_trades[-200:]],
             }
         decs = []
         if e.jev_name:

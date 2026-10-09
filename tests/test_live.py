@@ -9,7 +9,7 @@ from trade_jev.data import ET, LEVELS, TICK, Day, et_to_ns, load_day, secs
 from trade_jev.encode import Context, Position
 from trade_jev.harness import Config, run_day
 from trade_jev.live import (UNDEF, Batch, Engine, Guarded, LiveDay, ParquetSource, Recorder, front_month,
-                            ib_row, mbp10_row, merge_leftover_parts)
+                            earlier_trades, ib_row, mbp10_row, merge_leftover_parts)
 from trade_jev.policies import Decision, Gated
 from trade_jev.settings import Settings
 
@@ -204,3 +204,17 @@ def test_recorder_survives_a_crash_and_a_restart(tmp_path):
     day = load_day(DAY, b.ts[[10, len(b) - 1]], data_dir=tmp_path)
     assert np.array_equal(day.ts, b.ts) and np.array_equal(day.cum_delta, np.cumsum(b.delta))
     assert not (tmp_path / "parts").exists() or not any((tmp_path / "parts").iterdir())
+
+
+def test_earlier_trades_of_the_same_day(tmp_path):
+    from trade_jev.harness import Trade
+    from trade_jev.outputs import read_trades, write_trades
+    a = Trade(DAY, -1, 2, 100.0, 3, 99.0, "target", 1.0, 1.5)
+    b = Trade(DAY, 1, 1, 98.0, 2, 97.5, "stop", -0.5, -2.25)
+    for run, trades in (("live-" + DAY, [a]), ("live-" + DAY + "-101750", [b]), ("live-2026-06-24", [a])):
+        (tmp_path / run / "jev[raw_l10]").mkdir(parents=True)
+        write_trades(tmp_path / run / "jev[raw_l10]" / "trades.csv", trades)
+    assert read_trades(tmp_path / ("live-" + DAY) / "jev[raw_l10]" / "trades.csv") == [a]
+    own = tmp_path / ("live-" + DAY + "-120000")
+    assert earlier_trades(tmp_path, DAY, own) == {"jev[raw_l10]": [b, a]}  # other days left out, oldest first
+    assert earlier_trades(tmp_path, DAY, tmp_path / ("live-" + DAY)) == {"jev[raw_l10]": [b]}
