@@ -48,6 +48,7 @@ from trade_jev.settings import DEFAULT, Settings
 
 STALE_S = 5.0          # no feed records for this long during the session → STALE
 CATCH_UP_S = 30.0      # a decision older than this (wall clock) is catch-up: shown, never alerted
+RECONNECT_S = 10.0     # IBKR feed: wait between reconnect attempts
 
 
 # ---------------------------------------------------------------- growing day
@@ -278,46 +279,57 @@ class IBSource:
         self.live = True
 
     async def batches(self):
+        """Reconnects after a dropped connection or a Gateway that isn't up yet, until `stop_ns`."""
         from ib_async import IB, Future
-        ib = IB()
-        fatal: list[str] = []
+        last_ts = [0]
+        over = lambda: self.stop_ns and time.time_ns() > self.stop_ns  # noqa: E731 - also ends a quiet feed (holiday)
+        while not over():
+            self.ib = ib = IB()
+            fatal: list[str] = []
 
-        def on_error(req_id, code, msg, contract):
-            if code in (354, 10092, 10089, 200, 309):  # not subscribed / no such contract / too many depth reqs
-                fatal.append(f"{code}: {msg}")
-        ib.errorEvent += on_error
-        await ib.connectAsync(self.host, self.port, clientId=self.client_id, readonly=True, timeout=15)
-        try:
-            [c] = await ib.qualifyContractsAsync(Future(localSymbol=self.symbol, exchange="CME"))
-            ticker = ib.reqMktDepth(c, numRows=LEVELS, isSmartDepth=False)
-            ib.reqTickByTickData(c, "AllLast")
-            rows: list[tuple] = []
-            prev: list[tuple[int, int] | None] = [None]
-            last_ts = [0]
+            def on_error(req_id, code, msg, contract):
+                if code in (354, 10092, 10089, 200, 309):  # not subscribed / no such contract / too many depth reqs
+                    fatal.append(f"{code}: {msg}")
+            ib.errorEvent += on_error
+            try:
+                await ib.connectAsync(self.host, self.port, clientId=self.client_id, readonly=True, timeout=15)
+                [c] = await ib.qualifyContractsAsync(Future(localSymbol=self.symbol, exchange="CME"))
+                ticker = ib.reqMktDepth(c, numRows=LEVELS, isSmartDepth=False)
+                ib.reqTickByTickData(c, "AllLast")
+                print(f"[ibkr] {self.symbol} depth + trades subscribed", flush=True)
+                rows: list[tuple] = []
+                prev: list[tuple[int, int] | None] = [None]  # a fresh book after a reconnect: no trade sides yet
 
-            def on_pending(tickers):
-                if ticker not in tickers:
-                    return
-                ts = max(int(ticker.timestamp * 1e9), last_ts[0] + 1)
-                r = ib_row(ts, ticker.domBids, ticker.domAsks, ticker.tickByTicks, prev[0])
-                if r is not None:
-                    rows.append(r)
-                    last_ts[0], prev[0] = ts, (r[1][0], r[3][0])
-            ib.pendingTickersEvent += on_pending
-            # ponytail: a Gateway disconnect ends the session; add reconnect if that happens mid-session
-            while ib.isConnected():
-                await asyncio.sleep(self.flush_s)
-                if fatal:
-                    raise RuntimeError(f"IBKR {self.symbol}: {fatal[0]}")
-                if self.stop_ns and time.time_ns() > self.stop_ns:  # also ends a quiet feed (holiday)
-                    break
-                if rows:
-                    out, rows[:] = list(rows), []
-                    yield rows_to_batch(out)
-                    if self.stop_ns and out[-1][0] > self.stop_ns:
-                        break
-        finally:
-            ib.disconnect()
+                def on_pending(tickers):
+                    if ticker not in tickers:
+                        return
+                    ts = max(int(ticker.timestamp * 1e9), last_ts[0] + 1)
+                    r = ib_row(ts, ticker.domBids, ticker.domAsks, ticker.tickByTicks, prev[0])
+                    if r is not None:
+                        rows.append(r)
+                        last_ts[0], prev[0] = ts, (r[1][0], r[3][0])
+                ib.pendingTickersEvent += on_pending
+                while ib.isConnected():
+                    await asyncio.sleep(self.flush_s)
+                    if fatal:
+                        raise RuntimeError(f"IBKR {self.symbol}: {fatal[0]}")
+                    if rows:
+                        out, rows[:] = list(rows), []
+                        yield rows_to_batch(out)
+                        if self.stop_ns and out[-1][0] > self.stop_ns:
+                            return
+                    if over():
+                        return
+                print("[ibkr] disconnected", flush=True)
+            except RuntimeError:
+                raise
+            except Exception as e:  # noqa: BLE001 - Gateway down / restarting: retry
+                print(f"[ibkr] {type(e).__name__}: {e}", flush=True)
+            finally:
+                ib.disconnect()
+            if not over():
+                print(f"[ibkr] reconnecting in {RECONNECT_S:g}s", flush=True)
+                await asyncio.sleep(RECONNECT_S)
 
 
 class Recorder:
