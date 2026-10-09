@@ -130,6 +130,20 @@ Before trusting a setting found this way, split the days: tune on the older ones
 (`scripts/findings.py --tune runs/<a> --test runs/<b> --grid ...`). The author's +$20.8k was picked on the days it was
 scored on; a result only counts once it holds on days it wasn't tuned on.
 
+## 6c) Automated variant research
+
+`python -m trade_jev.research nightly` runs every weekday at 16:30 ET (scheduled task `trade-jev-research`, log
+`logs/research.log`) and keeps `research/ledger.json` (every idea ever tried, with per-day P&L) and `research/REPORT.md`.
+
+- An idea is a Jev input (an encoder in `encode.py`) plus filter / exit settings. Its fingerprint decides "already
+  tried": `research add` refuses a duplicate and prints the earlier verdict; retired ideas are never re-run.
+- Each idea is judged only on days recorded **after** it was added: after 10 such days it "worked" if it made money and
+  beat the live strategy on them, else it is retired as "didn't work".
+- New ideas come from the free grid search (the best untried setting on all days so far, one a night, at most 10 being
+  tested) and from any new encoder added to `encode.py`. To add your own:
+  `uv run python -m trade_jev.research add --encoder raw_l10 --stop-ticks 100 --target-ticks 50 --note "tighter exits"`.
+- Promoting a "worked" idea to the live session is left to you.
+
 ## 7) Test
 
 Unit tests, plus a check that the page's replays match the Python replays.
