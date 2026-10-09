@@ -891,9 +891,9 @@ class Session:
 
 # ---------------------------------------------------------------- server
 
-def serve(session: Session | None, port: int, open_browser: bool) -> ThreadingHTTPServer:
+def serve(session: Session | None, port: int, open_browser: bool, host: str = "127.0.0.1") -> ThreadingHTTPServer:
     from trade_jev.view import Handler
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
     srv.live = session
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -946,6 +946,7 @@ async def amain() -> None:
     for f in fields(Config):
         ap.add_argument(f"--{f.name.replace('_', '-')}", type=type(f.default), default=f.default)
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default="127.0.0.1", help="address to serve on; 0.0.0.0 = other computers on the network too")
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--no-save", action="store_true", help="don't write runs/ or data/live/")
     args = ap.parse_args()
@@ -1016,7 +1017,7 @@ async def amain() -> None:
         write_config(run_dir, cfg, [day], list(session.engine.policies), args.encoder, args.model,
                      {"min_conf": gate.min_conf, "agree": gate.agree, "min_hold_s": gate.min_hold_s},
                      live=source.live, symbol=symbol)
-    serve(session, args.port, not args.no_open)
+    serve(session, args.port, not args.no_open, args.host)
     print(f"settings: {gate.label()} · Ctrl-C to stop", flush=True)
     try:
         await session.run()

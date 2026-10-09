@@ -231,9 +231,10 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     ap = argparse.ArgumentParser(description="Replay any mix of runs, days and settings in the browser.")
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default="127.0.0.1", help="address to serve on; 0.0.0.0 = other computers on the network too")
     ap.add_argument("--no-open", action="store_true", help="don't open a browser tab")
     args = ap.parse_args()
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    srv = ThreadingHTTPServer((args.host, args.port), Handler)
     srv.daemon_threads = True
     url = f"http://localhost:{args.port}"
     print(f"viewer → {url}  ({len(list_runs())} runs)  ctrl-c to stop", flush=True)
