@@ -109,6 +109,27 @@ uv run python scripts/check_live_parity.py runs/<id> [runs/<id> ...]   # live en
 
 A session writes `runs/live-<day>/`, the same layout as a run plus `manual_fills.jsonl`, and records the feed to `data/live/` in the day-file format. It then opens in Replay and works with the replay scripts. The only built-in difference from the backtest is that the order goes out when Jev answers, not at the decision time; each decision records `jev_ms` and `send_ns`.
 
+## 6b) Backtest and tune on your own MNQ recordings
+
+Every live session records its day to `data/live/`, and `trade_jev.run` reads those files like the Databento ones,
+so each recorded day can be backtested and replayed. Always pass `--commission 0.62` for MNQ (the default 2.50 is NQ's).
+
+```bash
+# 1. Backtest recorded days: Jev + benchmarks. Answers Jev already gave (same state) come from cache/ for free.
+uv run python -m trade_jev.run --all --commission 0.62 --run-id bt-raw
+# 2. Tune filters and exits for free (no Jev calls): per-day table, then the 1,920-setting grid and its overfitting checks
+uv run python scripts/replay_sweep.py runs/bt-raw
+uv run python scripts/replay_grid.py runs/bt-raw
+uv run python scripts/analyze_replays.py runs/replays/grid-<ts>.csv
+# 3. Try a new input for Jev (a new encoder in encode.py): costs Jev calls, about $0.04 per recorded day
+uv run python -m trade_jev.run --all --commission 0.62 --policies jev --encoder features --run-id bt-features
+# 4. Look: Replay tab (http://localhost:8765/ while a live session runs, otherwise `python -m trade_jev.view`)
+```
+
+Before trusting a setting found this way, split the days: tune on the older ones, check on the newer
+(`scripts/findings.py --tune runs/<a> --test runs/<b> --grid ...`). The author's +$20.8k was picked on the days it was
+scored on; a result only counts once it holds on days it wasn't tuned on.
+
 ## 7) Test
 
 Unit tests, plus a check that the page's replays match the Python replays.
