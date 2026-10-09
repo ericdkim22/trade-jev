@@ -218,3 +218,41 @@ def test_earlier_trades_of_the_same_day(tmp_path):
     own = tmp_path / ("live-" + DAY + "-120000")
     assert earlier_trades(tmp_path, DAY, own) == {"jev[raw_l10]": [b, a]}  # other days left out, oldest first
     assert earlier_trades(tmp_path, DAY, tmp_path / ("live-" + DAY)) == {"jev[raw_l10]": [b]}
+
+
+class ScriptVariant(Script):
+    name = "jev[variant]"
+
+
+def test_variant_trades_beside_jev_like_its_own_backtest():
+    b = synthetic()
+    day = as_day(b)
+    cfg, gate = Config(cadence_s=15, start_et="09:30:00", end_et="09:35:00", stop_ticks=6, target_ticks=8), Settings(0.6, 2, 30, 6, 8)
+    eng = Engine(DAY, "NQU6", cfg, gate, Script(), baselines=["random"], variants=[ScriptVariant(seed=7)])
+
+    async def go():
+        for i in range(0, len(b), 50):
+            await eng.feed(b[i:i + 50])
+        await eng.finish()
+    asyncio.run(go())
+    grid = eng.grid[(eng.grid >= day.ts[0]) & (eng.grid <= day.ts[-1])]
+    ref = asyncio.run(run_day(day, grid, Gated(ScriptVariant(seed=7), gate.min_conf, gate.agree, gate.min_hold_s), cfg))
+    got = eng.results["jev[variant]"]
+    assert [(t.entry_ns, t.side, t.pnl) for t in got.trades] == [(t.entry_ns, t.side, t.pnl) for t in ref.trades]
+    assert got.trades and list(eng.results) == ["jev[test]", "jev[variant]", "random"]
+
+
+def test_features_encoder_is_labeled_and_json_ready():
+    import json
+    from trade_jev.encode import ENCODERS
+    day = as_day(synthetic(n_sec=120))
+    row = int(day.row_at(et_to_ns(DAY, "09:30:30")))
+    ctx = Context(day, et_to_ns(DAY, "09:30:30"), row,
+                  {15: int(day.row_at(et_to_ns(DAY, "09:30:15"))), 60: int(day.row_at(et_to_ns(DAY, "09:29:30")))}, Position())
+    s = ENCODERS["features"](ctx)
+    json.dumps(s)  # no numpy types
+    bi = s["book_imbalance"]
+    assert all(-1 <= bi[k] <= 1 for k in ("best_level", "top_5_levels", "all_10_levels"))
+    assert s["spread_ticks"] >= 1 and len(s["summary"]) == 3 and "order_book" not in s
+    assert s["net_aggressor_volume"]["last_60s"] == ctx.delta_since(60)
+    assert s["instrument"] == ENCODERS["raw_l10"](ctx)["instrument"]

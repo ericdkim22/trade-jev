@@ -65,12 +65,16 @@ INSTRUMENTS = {
 }
 
 
+def raw_l10_instrument(ctx: Context) -> str:
+    return f"{ctx.day.symbol} ({INSTRUMENTS['MNQ' if ctx.day.symbol.startswith('MNQ') else 'NQ']})"
+
+
 def raw_l10(ctx: Context) -> dict:
     """Raw numbers: L10 ladder + recent flow + recent mids + our position."""
     b = ctx.book
     bid_px, bid_sz, ask_px, ask_sz = b
     return {
-        "instrument": f"{ctx.day.symbol} ({INSTRUMENTS['MNQ' if ctx.day.symbol.startswith('MNQ') else 'NQ']})",
+        "instrument": raw_l10_instrument(ctx),
         "time_et": ns_to_et(ctx.t_ns),
         "position": _position_state(ctx),
         "order_book": {
@@ -86,5 +90,45 @@ def raw_l10(ctx: Context) -> dict:
     }
 
 
-ENCODERS: dict[str, Callable[[Context], dict]] = {"raw_l10": raw_l10}
+def _imb(b, a) -> float:
+    b, a = float(b), float(a)
+    return round((b - a) / (b + a), 3) if b + a else 0.0
+
+
+def _lean(x: float, th: float) -> str:
+    return "buyers" if x > th else "sellers" if x < -th else "neither side"
+
+
+def features(ctx: Context) -> dict:
+    """The same moment as `raw_l10`, pre-computed and labeled: Jev reads words better than it does arithmetic."""
+    bid_px, bid_sz, ask_px, ask_sz = ctx.book
+    m15 = round((ctx.mid - float(ctx.day.mid(max(ctx.prev_rows[15], 0)))) / TICK, 1)
+    m60 = round((ctx.mid - float(ctx.day.mid(max(ctx.prev_rows[60], 0)))) / TICK, 1)
+    d15, d60 = ctx.delta_since(15), ctx.delta_since(60)
+    i1, i5, i10 = _imb(bid_sz[0], ask_sz[0]), _imb(bid_sz[:5].sum(), ask_sz[:5].sum()), _imb(bid_sz.sum(), ask_sz.sum())
+    move = lambda m: f"up {m:g}" if m > 0 else f"down {-m:g}" if m < 0 else "unchanged"  # noqa: E731
+    return {
+        "instrument": raw_l10_instrument(ctx),
+        "time_et": ns_to_et(ctx.t_ns),
+        "position": _position_state(ctx),
+        "mid_price": ctx.mid,
+        "spread_ticks": int(ask_px[0] - bid_px[0]),
+        "book_imbalance": {
+            "best_level": i1, "top_5_levels": i5, "all_10_levels": i10,
+            "meaning": "(bid size - ask size) / (bid size + ask size): +1 = all resting size on the bid, -1 = all on the ask",
+        },
+        "price_change_ticks": {"last_15s": m15, "last_60s": m60},
+        "net_aggressor_volume": {
+            "last_15s": d15, "last_60s": d60,
+            "meaning": "contracts bought at the ask minus contracts sold at the bid",
+        },
+        "summary": [
+            f"Resting orders: the top 5 levels lean to {_lean(i5, 0.2)}, the full book to {_lean(i10, 0.2)}.",
+            f"Aggressive orders in the last 60s: {_lean(d60, 0)} ({d60:+d} contracts net).",
+            f"Price: {move(m15)} ticks in 15s, {move(m60)} ticks in 60s.",
+        ],
+    }
+
+
+ENCODERS: dict[str, Callable[[Context], dict]] = {"raw_l10": raw_l10, "features": features}
 LOOKBACKS = (15, 60)

@@ -95,6 +95,8 @@ Every weekday it runs by itself: the Windows scheduled task `trade-jev-live` sta
 14 hours. Each session writes `runs/live-<day>/` and records the feed (10-level book + trades) to `data/live/`, in 1-minute part files merged into the day file at the close; a crash loses at most the last minute, and parts left by a crash are merged when the next session starts. The dashboard is at
 http://localhost:8765/live while it runs. On a market holiday it waits for data and exits at 16:00 ET.
 
+**Jev variants** (`--variants features`, on in the daily run): extra Jev traders that see the same moment through a different input encoder, with the same filters, exits and fills, each with its own paper position and its own row in *Jev vs. benchmarks*. `features` gives Jev pre-computed, labeled numbers (book imbalance at 1 / 5 / 10 levels, price change in ticks, net aggressor volume) and one-line summaries instead of the raw ladder, since Jev reads words better than it does arithmetic. Its Jev calls run in parallel with the main one.
+
 **Databento feed:**
 
 ```bash

@@ -466,7 +466,7 @@ class Engine:
     clock. An event at time t fires once the first row with ts > t arrives, so rows ≤ t are final."""
 
     def __init__(self, day: str, symbol: str, cfg: Config, gate: Settings, jev, baselines: list[str],
-                 answer_latency: bool = False, on_change=None):
+                 answer_latency: bool = False, on_change=None, variants: list | None = None):
         self.cfg, self.gate = cfg, gate
         self.day = LiveDay(day, symbol)
         self.grid = decision_grid(day, cfg.start_et, cfg.end_et, cfg.cadence_s)
@@ -482,6 +482,13 @@ class Engine:
             g = Gated(self.guard, gate.min_conf, gate.agree, gate.min_hold_s)
             self.policies[g.name] = g
             self.jev_name = g.name
+        # Jev variants: own input encoder, same gate / exits / fills, own paper position
+        self.variant_guards: dict[str, Guarded] = {}
+        for v in variants or []:
+            vg = Guarded(v, getattr(v, "timeout_s", 8.0))
+            g = Gated(vg, gate.min_conf, gate.agree, gate.min_hold_s)
+            self.policies[g.name] = g
+            self.variant_guards[g.name] = vg
         for b in baselines:
             p = BASELINES[b]()
             self.policies[p.name] = p
@@ -559,11 +566,12 @@ class Engine:
             return
         self.decided.append(t)
         prev = {lb: int(self.day.row_at(t - secs(lb))) for lb in LOOKBACKS}
-        for name, p in self.policies.items():
+        ctxs = {name: Context(self.day, t, row, prev, self.books[name].pos) for name in self.policies}
+        answers = await asyncio.gather(*(p(ctxs[name]) for name, p in self.policies.items()))  # Jev calls in parallel
+        for (name, p), d in zip(self.policies.items(), answers):
             bk = self.books[name]
             before = bk.pos.side
-            ctx = Context(self.day, t, row, prev, bk.pos)
-            d = await p(ctx)
+            ctx = ctxs[name]
             rec = {"day": self.day.day, "t_ns": t, "time_et": ns_to_et(t), "mid": ctx.mid,
                    "position": before, "action": d.action, "raw_action": d.raw_action, "probs": d.probs,
                    "tokens": d.tokens, "cached": d.cached, "state": d.state}
@@ -578,6 +586,14 @@ class Engine:
                     send_ns = t + int(ms * 1e6)
                 rec.update(jev_ms=round(ms, 1), send_ns=send_ns, error=self.guard.last_error,
                            streak=self.streak())
+            elif name in self.variant_guards:
+                vg = self.variant_guards[name]
+                if not d.cached and d.tokens:
+                    self.jev_calls += 1
+                    self.jev_tokens += d.tokens
+                if self.answer_latency:
+                    send_ns = t + int(vg.last_ms * 1e6)
+                rec.update(jev_ms=round(vg.last_ms, 1), send_ns=send_ns, error=vg.last_error)
             self.results[name].decisions.append(rec)
             side = {"BUY": 1, "SELL": -1}.get(d.action, 0)
             if side and side != bk.pos.side:  # as Book.go: already on that side → no order
@@ -653,12 +669,12 @@ def earlier_trades(runs_dir: Path, day: str, own: Path | None) -> dict[str, list
 
 class Session:
     def __init__(self, args, cfg: Config, gate: Settings, day: str, symbol: str, source, jev,
-                 baselines: list[str], run_dir: Path | None, recorder: Recorder | None):
+                 baselines: list[str], run_dir: Path | None, recorder: Recorder | None, variants: list | None = None):
         self.args, self.cfg, self.gate, self.source = args, cfg, gate, source
         self.run_dir, self.recorder = run_dir, recorder
         self.bus = Bus()
         self.engine = Engine(day, symbol, cfg, gate, jev, baselines,
-                             answer_latency=source.live, on_change=self._changed)
+                             answer_latency=source.live, on_change=self._changed, variants=variants)
         self.mode = "live" if source.live else "replay"
         self.engine.real_jev = getattr(self.engine, "real_jev", False)
         self.status = "WAITING"
@@ -876,7 +892,7 @@ class Session:
         e = self.engine
         grid = np.asarray(e.decided, np.int64)
         write_equity(self.run_dir, e.day, grid, list(e.results.values()))
-        jev = [e.guard.inner] if e.jev_name and e.real_jev else []
+        jev = ([e.guard.inner] if e.jev_name and e.real_jev else []) + [g.inner for g in e.variant_guards.values()]
         rows = int(e.day.row_at(grid[-1]) - e.day.row_at(grid[0]) + 1)
         summary, record = write_results(
             self.run_dir, self.run_dir.name, {n: [r] for n, r in e.results.items()}, [e.day.day], self.cfg,
@@ -938,6 +954,7 @@ async def amain() -> None:
                     help="live, started after 09:30: skip replaying the session so far")
     ap.add_argument("--baselines", default="hold,random,imbalance")
     ap.add_argument("--encoder", default="raw_l10")
+    ap.add_argument("--variants", default="", help="extra Jev traders by encoder, e.g. features (live Jev only)")
     ap.add_argument("--model", default="jev-latest")
     ap.add_argument("--jev-timeout", type=float, default=8.0, help="seconds; a timeout counts as HOLD")
     ap.add_argument("--min-conf", type=float, default=DEFAULT.min_conf)
@@ -993,7 +1010,7 @@ async def amain() -> None:
         print(f"{symbol} live from {'now' if start_ns is None else ns_to_et(start_ns) + ' ET (intraday replay)'}; "
               f"decisions {cfg.start_et}–{cfg.end_et} ET every {cfg.cadence_s:g}s", flush=True)
 
-    jev, client = None, None
+    jev, client, variants = None, None, []
     if args.stored_answers:
         from trade_jev.replay import load_runs
         runs = load_runs([Path(args.stored_answers)])
@@ -1003,13 +1020,15 @@ async def amain() -> None:
     elif not args.no_jev:
         from typesafe_sdk import AsyncTypeSafeClient
         client = AsyncTypeSafeClient()
-        jev = JevPolicy(client, JsonlCache(ROOT / "cache" / "jev.jsonl"), RateLimiter(15),
-                        encoder=args.encoder, model=args.model)
+        cache, limiter = JsonlCache(ROOT / "cache" / "jev.jsonl"), RateLimiter(15)
+        jev = JevPolicy(client, cache, limiter, encoder=args.encoder, model=args.model)
+        variants = [JevPolicy(client, cache, limiter, encoder=v, model=args.model)
+                    for v in args.variants.split(",") if v and v != args.encoder]
     if jev is not None:
         jev.timeout_s = args.jev_timeout
 
     baselines = [b for b in args.baselines.split(",") if b]
-    session = Session(args, cfg, gate, day, symbol, source, jev, baselines, run_dir, recorder)
+    session = Session(args, cfg, gate, day, symbol, source, jev, baselines, run_dir, recorder, variants)
     if isinstance(source, IBSource):  # late start: skip decisions the feed can't cover (book + 60s look-back)
         e = session.engine
         e.gi = int(np.searchsorted(e.grid, time.time_ns() + secs(max(LOOKBACKS)), side="left"))

@@ -366,18 +366,24 @@ function renderChart(st) {
 
 function renderPnl(st) {
   const names = Object.keys(st.policies);
-  const col = (n) => n.startsWith("jev") ? "var(--p1)" : { random: "var(--neutral)", imbalance: "var(--p4)", hold: "var(--axis)" }[n] || "var(--p2)";
+  const col = (n) => n === st.jev?.name ? "var(--p1)" : n.startsWith("jev") ? "var(--p2)" : { random: "var(--neutral)", imbalance: "var(--p4)", hold: "var(--axis)" }[n] || "var(--p2)";
   const about = {
     hold: ["Do nothing", "never trades; should stay $0"],
     random: ["Random", "buys or sells at random on ~20% of decisions: what costs alone do"],
     imbalance: ["Imbalance rule", "buys when bids outweigh asks and buyers lead the last 60s; sells on the reverse"],
   };
-  const label = (n) => n.startsWith("jev") ? ["Jev", "the strategy: acts on 4 agreeing answers ≥ " + st.settings.min_conf] : about[n] || [n, ""];
+  const variants = {
+    features: ["Jev · features variant", "same filters and exits, but Jev reads pre-computed, labeled features (imbalance, price change, flow) instead of the raw ladder"],
+  };
+  const enc = (n) => (n.match(/^jev\[(.+)\]$/) || [])[1];
+  const label = (n) => n === st.jev?.name ? ["Jev", "the strategy: raw order book, acts on 4 agreeing answers ≥ " + st.settings.min_conf]
+    : n.startsWith("jev") ? variants[enc(n)] || ["Jev · " + enc(n) + " variant", "same filters and exits, different input"]
+    : about[n] || [n, ""];
   $("pnl").innerHTML = `<thead><tr><th>Strategy</th><th>Position</th><th>Entry</th><th>Open P&amp;L</th><th>Closed P&amp;L</th><th>Trades</th><th>Total</th></tr></thead><tbody>` +
     names.map((n) => {
       const p = st.policies[n], u = unreal(p, st);
       const [name, desc] = label(n);
-      return `<tr><td><span class="sw" style="background:${col(n)}"></span>${n.startsWith("jev") ? "<b>" + name + "</b>" : name}<div class="note" style="white-space:normal">${esc(desc)}</div></td><td>${sideWord(p.side)}</td><td>${p.side ? fmtPx(p.entry_px) : "–"}</td>
+      return `<tr><td><span class="sw" style="background:${col(n)}"></span>${n.startsWith("jev") ? "<b>" + esc(name) + "</b>" : esc(name)}<div class="note" style="white-space:normal">${esc(desc)}</div></td><td>${sideWord(p.side)}</td><td>${p.side ? fmtPx(p.entry_px) : "–"}</td>
         <td class="${cls(u)}">${p.side ? fmtUsd(u) : "–"}</td><td class="${cls(p.realized)}">${fmtUsd(p.realized)}</td><td>${p.n_trades}</td><td class="${cls(p.realized + u)}"><b>${fmtUsd(p.realized + u)}</b></td></tr>`;
     }).join("") + "</tbody>";
 }
