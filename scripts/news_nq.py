@@ -2,6 +2,7 @@
 
   uv run python scripts/news_nq.py ask  --bz-db <copy of bz.sqlite3> [--since 2026-09-24T18:00] [--until ...]
   uv run python scripts/news_nq.py eval --bz-db <copy> --bars-db <copy of news_entry_bars.sqlite3> [--split 2026-10-03]
+  uv run python scripts/news_nq.py nightly    # the pre-registered fade test on new days (research/NEWS_FADE.md)
 
 Use copies (sqlite3 backup API), never bz's live database. One Jev call per headline asks three narrow questions about
 Nasdaq-100 futures (QUESTIONS, version QV); the state is the headline as known when it arrived, with no prices.
@@ -37,6 +38,12 @@ QUESTIONS = {
     "nq_reaction": "Which way will Nasdaq-100 futures move in the next 30 minutes because of this headline?",
 }
 TICK, COST_TICKS = 0.25, 5  # MNQ: spread + commission round trip, roughly
+
+# Pre-registered 2026-10-10 (research/LOG.md): fade Jev's side on headlines it rates market-moving with a clear side.
+BZ_LIVE_DB = Path(r"C:\Users\eric\Documents\bzJEV2\bz-premarket\bz-premarket\server\data\bz.sqlite3")
+FADE_START, FADE_MM, FADE_SIDE, FADE_HOLD_MIN, FADE_N = "2026-10-12", 0.9, 0.6, 15, 50
+FADE_OUT = ROOT / "research" / "news_fade.json"
+FADE_REPORT = ROOT / "research" / "NEWS_FADE.md"
 
 
 def jev_questions():
@@ -188,16 +195,96 @@ def evaluate(conn, bars, hs, split) -> None:
         show("  after (test)", trades(after, best))
 
 
+def fade_side(a: dict) -> int | None:
+    """+1 long / -1 short against Jev's side, or None if the headline doesn't qualify."""
+    r = a["reaction"]
+    up, down = r.get("up", 0), r.get("down", 0)
+    if a["market_moving"] < FADE_MM or max(up, down) < FADE_SIDE:
+        return None
+    return -1 if up > down else 1
+
+
+def summary(xs: list[float]) -> dict:
+    """Net ticks per trade (after COST_TICKS) -> totals and the verdict rule: after FADE_N, worked if net > 0, t >= 2."""
+    n = len(xs)
+    mu = sum(xs) / n if n else 0.0
+    sd = math.sqrt(sum((x - mu) ** 2 for x in xs) / (n - 1)) if n > 1 else 0.0
+    t = mu / (sd / math.sqrt(n)) if sd else (math.inf if mu > 0 and n > 1 else 0.0)
+    verdict = "testing" if n < FADE_N else "worked" if sum(xs) > 0 and t >= 2 else "didn't work"
+    return {"n": n, "net_ticks": round(sum(xs), 1), "net_usd": round(sum(xs) * TICK * 2, 2), "per_trade": round(mu, 1),
+            "right": round(sum(x > 0 for x in xs) / n, 3) if n else None, "t": round(t, 2), "verdict": verdict}
+
+
+def nightly() -> None:
+    import numpy as np
+    from trade_jev.data import LIVE_DIR, et_to_ns, list_days, load_day
+    copy = ROOT / "data" / "news" / "bz-copy.sqlite3"
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    src = sqlite3.connect(f"file:{BZ_LIVE_DB.as_posix()}?mode=ro", uri=True)  # read-only on bz's live database
+    dst = sqlite3.connect(copy)
+    src.backup(dst)
+    src.close()
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    hs = headlines(dst, f"{FADE_START}T00:00", now, ["BZ Wire"])
+    asyncio.run(ask(dst, hs))
+    cache, days = load_cache(), list_days(LIVE_DIR)
+    trades, skipped, loaded = [], {"outside 09:30-15:45": 0, "no recording": 0}, {}
+    for h in hs:
+        a = cache.get(h["id"])
+        side = fade_side(a) if a else None
+        if side is None:
+            continue
+        t0 = datetime.fromisoformat(max(h["captured_at"], h["ts_et"])[:19])
+        d = t0.date().isoformat()
+        if not ("09:30" <= t0.strftime("%H:%M") <= "15:45"):
+            skipped["outside 09:30-15:45"] += 1
+            continue
+        if d not in days:
+            skipped["no recording"] += 1
+            continue
+        if d not in loaded:
+            loaded[d] = load_day(d, np.array([et_to_ns(d, "09:30:00")]), data_dir=LIVE_DIR)
+        day = loaded[d]
+        ns0 = et_to_ns(d, t0.strftime("%H:%M:%S"))
+        ns1 = ns0 + FADE_HOLD_MIN * 60 * 10**9
+        r0, r1 = int(day.row_at(ns0)), int(day.row_at(ns1))
+        if r0 < 0 or ns0 - int(day.ts[r0]) > 60e9 or ns1 - int(day.ts[r1]) > 60e9:  # a gap in the recording
+            skipped["no recording"] += 1
+            continue
+        move = (float(day.mid(r1)) - float(day.mid(r0))) / TICK
+        trades.append({"day": d, "time": t0.strftime("%H:%M:%S"), "side": side, "title": h["title"][:120],
+                       "market_moving": a["market_moving"], "reaction": a["reaction"],
+                       "net_ticks": round(move * side - COST_TICKS, 2)})
+    s = summary([t["net_ticks"] for t in trades])
+    FADE_OUT.write_text(json.dumps({"rule": {"start": FADE_START, "market_moving_min": FADE_MM, "side_min": FADE_SIDE,
+                                             "hold_min": FADE_HOLD_MIN, "cost_ticks": COST_TICKS, "verdict_after": FADE_N},
+                                    "summary": s, "skipped": skipped, "trades": trades}, indent=1), encoding="utf-8")
+    lines = ["# News fade test (pre-registered 2026-10-10)", "",
+             f"Rule: on BZ Wire headlines from {FADE_START} that Jev rates market-moving >= {FADE_MM} with a clear side "
+             f"(>= {FADE_SIDE}), trade AGAINST Jev's side at capture, hold {FADE_HOLD_MIN} min, mid to mid minus "
+             f"{COST_TICKS} ticks. Verdict after {FADE_N} trades: worked if net > 0 and t >= 2.", "",
+             f"**{s['verdict']}**: {s['n']}/{FADE_N} trades, net {s['net_ticks']:+} ticks (${s['net_usd']:+,.2f} on MNQ), "
+             f"{s['per_trade']:+} per trade, right {s['right'] if s['right'] is not None else '-'}, t {s['t']:+}. "
+             f"Skipped: {skipped}.", "",
+             "| day | time | fade | net ticks | headline |", "|---|---|---|---|---|"]
+    lines += [f"| {t['day']} | {t['time']} | {'long' if t['side'] > 0 else 'short'} | {t['net_ticks']:+} | {t['title']} |"
+              for t in trades]
+    FADE_REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"news fade: {s} / skipped {skipped} -> {FADE_REPORT}", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("ask", "eval"))
-    ap.add_argument("--bz-db", required=True)
+    ap.add_argument("cmd", choices=("ask", "eval", "nightly"))
+    ap.add_argument("--bz-db")
     ap.add_argument("--bars-db")
     ap.add_argument("--since", default="2026-09-24T18:00")
     ap.add_argument("--until", default="2026-10-08T16:00")
     ap.add_argument("--sources", default="BZ Wire")
     ap.add_argument("--split", default="2026-10-03")
     a = ap.parse_args()
+    if a.cmd == "nightly":
+        return nightly()
     conn = sqlite3.connect(a.bz_db)
     hs = headlines(conn, a.since, a.until, a.sources.split(","))
     if a.cmd == "ask":
