@@ -55,3 +55,18 @@ def test_report_lists_every_group():
     led, base, idea = ledger_with(days(3), days(3))
     text = R.report(led)
     assert "## Live strategy" in text and "## Testing (2)" in text and "Didn't work" in text and idea["id"] in text
+
+
+def test_history_retires_only_clear_losers_with_enough_days():
+    led, base, idea = ledger_with({}, {})
+    hist = lambda n, pnl: {f"2021-01-{d:02d}" if d <= 28 else f"2021-02-{d - 28:02d}": {"pnl": pnl, "trades": 2} for d in range(1, n + 1)}
+    base["history"], idea["history"] = hist(39, 5.0), hist(39, -5.0)
+    R.judge_history(idea, base)
+    assert idea["status"] == "testing"  # 39 days: not enough
+    base["history"], idea["history"] = hist(40, 5.0), hist(40, -5.0)
+    R.judge_history(idea, base)
+    assert idea["status"] == "didn't work" and idea["verdict"]["basis"] == "history"
+    led, base, idea = ledger_with({}, {})
+    base["history"], idea["history"] = hist(40, -10.0), hist(40, -5.0)
+    R.judge_history(idea, base)
+    assert idea["status"] == "testing"  # lost money, but less than the live strategy: keep testing on live days

@@ -14,7 +14,11 @@ An idea is a Jev input (an encoder in `encode.ENCODERS`) plus filter / exit sett
     beat the live strategy on the same days, else "didn't work" (retired)
  4. new ideas: every encoder not yet tried (default settings), and the best untried grid setting on all days so far
     (in-sample; it is then judged out-of-sample like any other idea), at most one a night
- 5. writes research/REPORT.md
+ 5. history: every idea is also replayed on the MarketTick sample (one `hist-<encoder>` backtest per encoder, at most
+    one new backtest a night, ~1.7 h). An idea that loses money there and does worse than the live strategy on
+    MIN_HIST_DAYS+ days is retired without waiting for live days (history is free of tuning only for ideas not picked on
+    it, so the grid search never looks at history)
+ 6. writes research/REPORT.md
 """
 
 from __future__ import annotations
@@ -44,6 +48,8 @@ MIN_OOS_DAYS = 10        # days after an idea was added before it gets a verdict
 MAX_OPEN_GRID = 10       # grid ideas being tested at once (each new one waits for a slot)
 MIN_GRID_DAYS = 5        # recorded days before the grid search proposes anything
 BASELINE = "live"        # id of the live strategy's idea
+HISTORY_DAYS = DIR / "history-sample-days.txt"  # MarketTick days (data/history) every idea is also scored on
+MIN_HIST_DAYS = 40       # history days before an idea can be retired on history alone
 GRID = {                 # as scripts/replay_grid.py
     "min_conf": [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
     "agree": [1, 2, 3, 4],
@@ -109,6 +115,21 @@ def oos_days(idea: dict) -> list[str]:
     return sorted(d for d in idea["days"] if d > idea["added"])
 
 
+def judge_history(idea: dict, base: dict) -> None:
+    """Retire early: lost money on history and did worse than the live strategy on the same days."""
+    if idea["status"] != "testing":
+        return
+    h, bh = idea.get("history", {}), base.get("history", {})
+    days = [d for d in h if d in bh]
+    if len(days) < MIN_HIST_DAYS:
+        return
+    net, base_net = sum(h[d]["pnl"] for d in days), sum(bh[d]["pnl"] for d in days)
+    if net < 0 and net < base_net:
+        idea["status"] = "didn't work"
+        idea["verdict"] = {"on": str(date.today()), "basis": "history", "days": len(days), "net": round(net, 2),
+                           "live_net": round(base_net, 2)}
+
+
 def judge(idea: dict, base: dict) -> None:
     """'worked' / "didn't work" once MIN_OOS_DAYS out-of-sample days exist (both ideas need the days)."""
     if idea["status"] != "testing":
@@ -166,6 +187,64 @@ def evaluate(ledger: dict, days: list[str]) -> None:
         save(ledger)
 
 
+def history_days() -> list[str]:
+    return HISTORY_DAYS.read_text().strip().split(",") if HISTORY_DAYS.exists() else []
+
+
+def history_backtest(encoder: str, days: list[str]) -> Path | None:
+    """One backtest per encoder over the whole MarketTick sample (Jev calls, cached)."""
+    out = ROOT / "runs" / f"hist-{encoder}"
+    if (out / "results.json").exists():
+        return out
+    cmd = [sys.executable, "-m", "trade_jev.run", "--days", ",".join(days), "--policies", "jev", "--encoder", encoder,
+           "--commission", str(COMMISSION), "--run-id", out.name]
+    env = {**os.environ, "PYTHONUTF8": "1", "TRADE_JEV_DATA": str(ROOT / "data" / "history")}
+    print(f"  history backtest {encoder} on {len(days)} days (about {len(days) * 1.8:.0f} min)", flush=True)
+    r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    if r.returncode or not (out / "results.json").exists():
+        print(f"  history backtest {encoder} failed:\n{r.stdout[-800:]}{r.stderr[-800:]}", flush=True)
+        return None
+    return out
+
+
+def evaluate_history(ledger: dict, max_new_backtests: int = 1) -> None:
+    """Replay every open idea on the history sample days it hasn't seen yet."""
+    days = history_days()
+    if not days:
+        return
+    open_ideas = [i for i in ledger["ideas"] if i["status"] in ("live", "testing", "worked")]
+    from trade_jev import data
+    old_dir, data.DATA_DIR = data.DATA_DIR, ROOT / "data" / "history"
+    try:
+        for enc in sorted({i["encoder"] for i in open_ideas}, key=lambda e: e != "raw_l10"):  # the baseline's first
+            todo = [i for i in open_ideas if i["encoder"] == enc and len(i.get("history", {})) < len(days)]
+            if not todo:
+                continue
+            run = ROOT / "runs" / f"hist-{enc}"
+            if not (run / "results.json").exists():
+                if max_new_backtests <= 0:
+                    continue
+                max_new_backtests -= 1
+                if history_backtest(enc, days) is None:
+                    continue
+            runs = load_runs([run])
+            for day in days:
+                if day not in runs:
+                    continue
+                market = None
+                for idea in todo:
+                    h = idea.setdefault("history", {})
+                    if day in h:
+                        continue
+                    if market is None:
+                        market = load_market(runs[day])
+                    r = asyncio.run(replay_day(runs[day], *market, settings_of(idea)))
+                    h[day] = {"pnl": round(r.pnl, 2), "trades": len(r.trades)}
+            save(ledger)
+    finally:
+        data.DATA_DIR = old_dir
+
+
 def _grid_day(day: str) -> list[float]:
     rd = load_runs([ROOT / "runs" / f"research-raw_l10-{day}"])[day]
     market = load_market(rd)
@@ -208,11 +287,16 @@ def report(ledger: dict) -> str:
         live = sum(base["days"][d]["pnl"] for d in oos)
         all_net = sum(v["pnl"] for v in i["days"].values())
         trades = sum(v["trades"] for v in i["days"].values())
+        h, bh = i.get("history", {}), base.get("history", {})
+        hd = [d for d in h if d in bh]
+        hist = (f"${sum(h[d]['pnl'] for d in hd):,.0f} vs ${sum(bh[d]['pnl'] for d in hd):,.0f} "
+                f"({len(hd)} d, {sum(h[d]['trades'] for d in hd)} tr)") if hd else "-"
         return (f"| {i['id']} | {i['encoder']} | {settings_of(i).label()} | {i['source']} | {i['added']} | "
-                f"{len(oos)}/{MIN_OOS_DAYS} | ${net:,.2f} | ${live:,.2f} | ${all_net:,.2f} ({trades}) | {i['note']} |")
+                f"{len(oos)}/{MIN_OOS_DAYS} | ${net:,.2f} | ${live:,.2f} | ${all_net:,.2f} ({trades}) | {hist} | "
+                f"{i['note']} |")
 
     head = ("| id | input | settings | source | added | days after added | net on them | live on them "
-            "| net all days (trades) | note |\n|---|---|---|---|---|---|---|---|---|---|")
+            "| net all days (trades) | history: net vs live strategy | note |\n|---|---|---|---|---|---|---|---|---|---|---|")
     groups = [("Worked: candidates to put live", "worked"), ("Testing", "testing"),
               ("Didn't work (retired, never re-run)", "didn't work")]
     days = sorted(base["days"])
@@ -237,6 +321,9 @@ def nightly() -> None:
         judge(i, base)
     propose(ledger, days, str(date.today()))
     evaluate(ledger, days)  # new ideas get their in-sample history too (it doesn't count for the verdict)
+    evaluate_history(ledger)
+    for i in ledger["ideas"]:
+        judge_history(i, base)
     save(ledger)
     (DIR / "REPORT.md").write_text(report(ledger), encoding="utf-8")
     print(f"research: report → {DIR / 'REPORT.md'}", flush=True)
@@ -246,6 +333,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Automated Jev variant research")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("nightly")
+    sub.add_parser("history", help="replay ideas on the MarketTick sample (backtests every missing encoder)")
     sub.add_parser("list")
     a = sub.add_parser("add")
     a.add_argument("--encoder", default="raw_l10")
@@ -255,6 +343,16 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "nightly":
         return nightly()
+    if args.cmd == "history":
+        ledger = load()
+        seed(ledger)
+        evaluate_history(ledger, max_new_backtests=99)
+        base = find(ledger, key("raw_l10", DEFAULT))
+        for i in ledger["ideas"]:
+            judge_history(i, base)
+        save(ledger)
+        (DIR / "REPORT.md").write_text(report(ledger), encoding="utf-8")
+        return print(f"research: report → {DIR / 'REPORT.md'}")
     ledger = load()
     seed(ledger)
     if args.cmd == "add":
