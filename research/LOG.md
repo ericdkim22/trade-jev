@@ -43,3 +43,20 @@ Hindsight grid on the raw-book history answers (`scripts/replay_grid.py runs/his
 Verdict: didn't work. Even the best of 1,920 settings chosen in hindsight is indistinguishable from luck (the best of
 1,920 draws from a strategy with no edge looks like this), so Jev's answers to the current question carry no tradeable
 signal here and tuning filters / exits is pointless. Not registered as an idea for that reason.
+
+## 2026-10-10: question variants on the history sample (57 days)
+
+New Jev questions (`policies.QUESTIONS`), ~$7 in Jev answers (`runs/hist-raw_l10-target`, `runs/hist-raw_l10-next15`).
+
+| Experiment | Net | $/day | t | Win days | vs live strategy, day by day | Verdict |
+|---|---|---|---|---|---|---|
+| i008 `target`: Jev told the +25 / -50 point exits, asked which side reaches its target first | -$3,580 | -62.8 | -1.84 | 25/57 | -$23/day (t -0.87) | didn't work |
+| i009 `next15`: 15-minute direction, 15-min time stop, +/-25 points | -$3,984 | -69.9 | -2.05 | 23/57 | -$31/day (t -1.06) | didn't work |
+
+Side variants (no Jev calls): target flipped -$700, long only -$792; next15 flipped -$3,964, long only -$954. No variant
+positive. Both questions keep the short bias (next15: 1,390 shorts vs 439 longs over 2020-2025's rising market).
+On one test moment all three questions got nearly the same answer (SELL 81% / 75% / 81%): the wording barely moves Jev.
+
+Overall verdict after inputs (4), exits (2), questions (2), side filters and the hindsight grid: Jev's answers about
+MNQ's order book carry no tradeable direction signal on 2020-2025. Retry only with a different kind of input (text /
+news, where Jev is strong), not another variation of the order-book state.
