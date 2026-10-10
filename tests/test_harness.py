@@ -94,3 +94,34 @@ def test_zero_disables_stop_and_target():
     r = run(day, {0: "BUY"}, stop_ticks=0, target_ticks=0)
     (t,) = r.trades
     assert t.reason == "eod"
+
+
+def test_time_stop_closes_at_market_after_max_hold():
+    day = make_day([400] * 10)
+    r = run(day, {0: "BUY"}, max_hold_s=3)
+    (t,) = r.trades
+    assert t.reason == "time" and t.exit_ns == 3 * S and t.exit_px == 400 * 0.25  # long exits at the bid
+
+
+def test_breakeven_stop_after_the_trade_was_in_profit():
+    # long fills at ask 401; bid reaches 406 (5 ticks up), then falls back to 401 = entry → break-even exit
+    day = make_day([400, 403, 406, 404, 401, 398, 390, 390])
+    r = run(day, {0: "BUY"}, breakeven_ticks=5)
+    (t,) = r.trades
+    assert t.reason == "breakeven" and t.exit_px == 401 * 0.25 and t.points == 0
+    # without it the trade stays open to the close (390 is 11 ticks below entry, inside the 20-tick stop)
+    (t,) = run(day, {0: "BUY"}).trades
+    assert t.reason == "eod"
+
+
+def test_breakeven_stays_armed_across_incremental_checks():
+    from trade_jev.harness import Book, DayResult
+    day = make_day([400, 406, 405, 404, 401, 399])
+    bk = Book(day, Config(stop_ticks=0, target_ticks=0, breakeven_ticks=5, commission=0), DayResult(day.day, "x"))
+    bk.go(1, 0)               # long at 401 (row 0 ask)
+    bk.check_exits(1)         # row 1: bid 406 → armed
+    assert bk.armed and not bk.res.trades
+    bk.check_exits(3)
+    assert not bk.res.trades  # 405, 404 still above entry
+    bk.check_exits(5)
+    assert bk.res.trades[0].reason == "breakeven" and bk.res.trades[0].exit_ns == 4 * S

@@ -68,6 +68,7 @@ class StoredAnswers:
 
 
 async def replay_day(rd: RunDay, day: Day, grid: np.ndarray, s: Settings) -> DayResult:
-    cfg = dataclasses.replace(rd.config, stop_ticks=s.stop_ticks, target_ticks=s.target_ticks)
+    cfg = dataclasses.replace(rd.config, stop_ticks=s.stop_ticks, target_ticks=s.target_ticks,
+                              max_hold_s=s.max_hold_s, breakeven_ticks=s.breakeven_ticks)
     policy = Gated(StoredAnswers(rd.answers), s.min_conf, s.agree, s.min_hold_s)
     return await run_day(day, grid, policy, cfg)

@@ -57,7 +57,9 @@ GRID = {                 # as scripts/replay_grid.py
 
 def key(encoder: str, s: Settings) -> str:
     return f"{encoder}|conf={float(s.min_conf):g}|agree={int(s.agree)}|hold={float(s.min_hold_s):g}" \
-           f"|stop={int(s.stop_ticks)}|target={int(s.target_ticks)}"
+           f"|stop={int(s.stop_ticks)}|target={int(s.target_ticks)}" + \
+           (f"|maxhold={float(s.max_hold_s):g}" if s.max_hold_s else "") + \
+           (f"|breakeven={int(s.breakeven_ticks)}" if s.breakeven_ticks else "")
 
 
 def settings_of(idea: dict) -> Settings:
@@ -256,7 +258,8 @@ def main() -> None:
     ledger = load()
     seed(ledger)
     if args.cmd == "add":
-        s = Settings(args.min_conf, args.agree, args.min_hold_s, args.stop_ticks, args.target_ticks)
+        s = Settings(args.min_conf, args.agree, args.min_hold_s, args.stop_ticks, args.target_ticks,
+                     args.max_hold_s, args.breakeven_ticks)
         try:
             idea = add(ledger, args.encoder, s, "manual", args.note, str(date.today()))
         except ValueError as e:

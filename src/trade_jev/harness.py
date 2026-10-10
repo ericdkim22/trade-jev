@@ -29,6 +29,8 @@ class Config:
     commission: float = 2.50  # $ per side
     stop_ticks: int = DEFAULT.stop_ticks      # 0 = off
     target_ticks: int = DEFAULT.target_ticks  # 0 = off
+    max_hold_s: float = DEFAULT.max_hold_s    # 0 = off
+    breakeven_ticks: int = DEFAULT.breakeven_ticks  # 0 = off
 
 
 @dataclass
@@ -39,7 +41,7 @@ class Trade:
     entry_px: float
     exit_ns: int
     exit_px: float
-    reason: str  # jev | stop | target | eod
+    reason: str  # jev | stop | target | eod | time | breakeven
     points: float
     pnl: float   # $ net of commission
 
@@ -63,6 +65,7 @@ class Book:
         self.day, self.cfg, self.res = day, cfg, result
         self.pos = Position()
         self.watch_from = 0  # first row not yet checked for stop/target
+        self.armed = False   # break-even stop active for the open position
 
     def _close(self, row: int, px: float, reason: str) -> None:
         p = self.pos
@@ -74,31 +77,39 @@ class Book:
         self.pos = Position()
 
     def check_exits(self, upto_row: int) -> None:
-        """Fire stop/target on rows [watch_from, upto_row]."""
+        """Fire stop / target / break-even / time stop on rows [watch_from, upto_row]."""
         p, lo = self.pos, self.watch_from
         self.watch_from = max(self.watch_from, upto_row + 1)
-        s, t = self.cfg.stop_ticks, self.cfg.target_ticks
-        if p.side == 0 or upto_row < lo or not (s or t):
+        c = self.cfg
+        s, t, be, mh = c.stop_ticks, c.target_ticks, c.breakeven_ticks, c.max_hold_s
+        if p.side == 0 or upto_row < lo or not (s or t or be or mh):
             return
-        entry = round(p.entry_px / TICK)
-        if p.side > 0:
-            touch = self.day.bid[lo:upto_row + 1]
-            stop = (touch <= entry - s) if s else np.zeros(len(touch), bool)
-            tgt = (touch >= entry + t) if t else np.zeros(len(touch), bool)
-            tgt_px = (entry + t) * TICK
-        else:
-            touch = self.day.ask[lo:upto_row + 1]
-            stop = (touch >= entry + s) if s else np.zeros(len(touch), bool)
-            tgt = (touch <= entry - t) if t else np.zeros(len(touch), bool)
-            tgt_px = (entry - t) * TICK
-        hit = stop | tgt
+        entry, n = round(p.entry_px / TICK), upto_row + 1 - lo
+        off = np.zeros(n, bool)
+        touch = self.day.bid[lo:upto_row + 1] if p.side > 0 else self.day.ask[lo:upto_row + 1]
+        gain = (touch.astype(np.int64) - entry) * p.side  # ticks in our favour at the exit side of the book
+        stop = gain <= -s if s else off
+        tgt = gain >= t if t else off
+        even = off
+        if be:
+            reached = gain >= be
+            first = 0 if self.armed else (int(np.argmax(reached)) + 1 if reached.any() else n)
+            even = np.zeros(n, bool)
+            even[first:] = gain[first:] <= 0  # armed from the row after the one that reached `be`
+            self.armed = self.armed or bool(reached.any())
+        late = self.day.ts[lo:upto_row + 1] >= p.entry_ns + secs(mh) if mh else off
+        hit = stop | tgt | even | late
         if not hit.any():
             return
         k = int(np.argmax(hit))
         if stop[k]:
             self._close(lo + k, float(touch[k]) * TICK, "stop")
+        elif tgt[k]:
+            self._close(lo + k, (entry + p.side * t) * TICK, "target")
+        elif even[k]:
+            self._close(lo + k, float(touch[k]) * TICK, "breakeven")
         else:
-            self._close(lo + k, tgt_px, "target")
+            self._close(lo + k, float(touch[k]) * TICK, "time")
 
     def go(self, side: int, t_ns: int) -> None:
         """Move to `side` with a market order sent at t_ns."""
@@ -113,6 +124,7 @@ class Book:
             self._close(f, px, "jev")
         self.pos = Position(side, px, int(self.day.ts[f]))
         self.watch_from = f + 1
+        self.armed = False
 
 
 async def run_day(day: Day, grid: np.ndarray, policy, cfg: Config) -> DayResult:
