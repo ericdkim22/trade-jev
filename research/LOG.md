@@ -60,3 +60,23 @@ On one test moment all three questions got nearly the same answer (SELL 81% / 75
 Overall verdict after inputs (4), exits (2), questions (2), side filters and the hindsight grid: Jev's answers about
 MNQ's order book carry no tradeable direction signal on 2020-2025. Retry only with a different kind of input (text /
 news, where Jev is strong), not another variation of the order-book state.
+
+## 2026-10-10: Jev on headlines (bz-premarket news) vs MNQ
+
+Data: copies of bz's `bz.sqlite3` (headlines, Jev calls) and `news_entry_bars.sqlite3` (MNQZ6 1-min bars,
+2026-09-24..10-08). Entry at the minute a headline was captured (the earliest one could act). ~1 min bars, no fills.
+
+1. bz's existing Jev calls on SPY/QQQ-tagged stories (275 with bars, 09-29..10-08): direction right 46-51%
+   (t -0.1..-1.5 against); materiality medium+ moved MNQ more at +5 min (AUC 0.62, median 96 vs 54 ticks), fading by
+   60 min. Following MNQ's first-minute reaction after medium+ stories: <= +12 ticks before ~5 ticks costs, t <= 0.4,
+   no better than low-materiality stories. Verdict: didn't work.
+2. `scripts/news_nq.py` (QV 1): one Jev call per BZ Wire headline, three questions about Nasdaq-100 futures
+   (market_moving, nq_move_size, nq_reaction). 6,577 asked ($0.22), 5,966 with bars (09-25..10-08).
+   - Size: AUC 0.48-0.54 for a top-quartile move at +5/15/30/60 min. Verdict: didn't work.
+   - Direction, big + clear side, 30-min hold: 150 trades right 48%, -25 ticks net each (t -1.27); stricter cut-offs
+     do worse (t -1.9). Verdict: didn't work.
+   - Cut found while looking (not pre-registered, several cuts tried): headlines with market_moving >= 0.9 and a clear
+     side (48): Jev's side right 48% / 33% / 40% at +5 / 15 / 30 min, t -0.6 / -2.6 / -2.4. MNQ went the other way.
+     Status: hypothesis only. Pre-registered test from 2026-10-12: FADE Jev's side on headlines with
+     market_moving >= 0.9 and max(up, down) >= 0.6, entered at capture, 15-min hold, net of 5 ticks; verdict after
+     50 such headlines with MNQ prices: worked if net > 0 and t >= 2, else didn't work.
