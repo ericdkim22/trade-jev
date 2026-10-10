@@ -87,6 +87,6 @@ def test_question_is_part_of_the_fingerprint_and_the_backtest():
 def test_jev_policy_names_and_questions():
     from trade_jev.policies import QUESTIONS, JevPolicy
     p = JevPolicy(None, None, None, encoder="raw_l10", question="next15")
-    assert p.name == "jev[raw_l10/next15]" and p.question is QUESTIONS["next15"]
+    assert p.name == "jev[raw_l10+next15]" and p.question is QUESTIONS["next15"]
     assert JevPolicy(None, None, None).name == "jev[raw_l10]"
     assert "15 minutes" in QUESTIONS["next15"].instructions and "+25 points" in QUESTIONS["target"].instructions

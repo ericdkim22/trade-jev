@@ -125,7 +125,7 @@ class JevPolicy:
         self.encode = ENCODERS[encoder]
         self.model = model
         self.question = QUESTIONS[question]
-        self.name = f"jev[{encoder}]" if question == "scalp" else f"jev[{encoder}/{question}]"
+        self.name = f"jev[{encoder}]" if question == "scalp" else f"jev[{encoder}+{question}]"  # a folder name: no "/"
         self.api_calls = 0
         self.cache_hits = 0
 
