@@ -130,6 +130,21 @@ Before trusting a setting found this way, split the days: tune on the older ones
 (`scripts/findings.py --tune runs/<a> --test runs/<b> --grid ...`). The author's +$20.8k was picked on the days it was
 scored on; a result only counts once it holds on days it wasn't tuned on.
 
+## 6b-2) Five years of MarketTick history
+
+`python -m trade_jev.markettick` turns MarketTick MNQ CSV days (`C:\Transfer\YYYYMMDD.csv`, 2020-06 to 2025-05) into
+day files in `data/history/` (about 90 s and 40 MB a day). Level 1 of each book is the exact Level 1 quote; levels 2-10
+are rebuilt from MarketTick's Level 2 rows by price and are approximate (99.1% within one level of their stated depth);
+trades are signed against the quote. Holiday sessions (e.g. MLK Day, Presidents' Day) are converted but left out of
+backtests.
+
+```bash
+uv run python -m trade_jev.markettick sample C:\Transfer --days 60       # weekdays spread evenly over the 5 years
+TRADE_JEV_DATA=data/history uv run python -m trade_jev.run --days <list> --encoder features --commission 0.62
+```
+
+The 59-day sample's day list is in `research/history-sample-days.txt`.
+
 ## 6c) Automated variant research
 
 `python -m trade_jev.research nightly` runs every weekday at 16:30 ET (scheduled task `trade-jev-research`, log
