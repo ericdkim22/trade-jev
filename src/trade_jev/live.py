@@ -354,8 +354,8 @@ class Recorder:
     ])
 
     def __init__(self, day: str, symbol: str, out_dir: Path = LIVE_DIR, rows_per_group: int = 100_000,
-                 flush_s: float = 60.0):
-        self.path = out_dir / f"GLBX.MDP3__{symbol}__mbp-10__rth__{day}__live.parquet"
+                 flush_s: float = 60.0, tag: str = "live"):
+        self.path = out_dir / f"GLBX.MDP3__{symbol}__mbp-10__rth__{day}__{tag}.parquet"
         self.parts = parts_dir(self.path)
         self.parts.mkdir(parents=True, exist_ok=True)
         self.day, self.symbol, self.rows_per_group, self.flush_s = day, symbol, rows_per_group, flush_s
@@ -419,7 +419,7 @@ def merge_parts(day_path: Path) -> int:
     m = _NAME.fullmatch(day_path.name)
     day_path.with_suffix(".json").write_text(json.dumps({
         "dataset": "GLBX.MDP3", "symbol": m["sym"], "schema": "mbp-10", "day": m["day"],
-        "session": "rth", "rows": rows, "source": "trade_jev.live"}, indent=2))
+        "session": "rth", "rows": rows, "source": day_path.stem.rsplit("__", 1)[-1]}, indent=2))
     return rows
 
 
