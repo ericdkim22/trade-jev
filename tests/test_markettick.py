@@ -45,3 +45,13 @@ def test_holiday_files_are_skipped(tmp_path):
     src.write_text("20250526020000000000;1;0;100.00;5\n20250526020000000001;1;1;100.25;5\n")
     st = M.convert(src, out_dir=tmp_path)
     assert st["skipped"] and not list(tmp_path.glob("*.parquet")) and not (tmp_path / "parts" / "x").exists()
+
+
+def test_level1_size_comes_from_level2_at_the_quote_price(tmp_path):
+    src = tmp_path / "20250521.csv"
+    src.write_text("20250521133000000000;1;0;100.00;2\n20250521133000000001;2;0;100.00;9;1;0\n"
+                   "20250521133000000002;1;1;100.25;3\n20250521133001000000;1;0;100.00;2\n")
+    M.convert(src, out_dir=tmp_path)
+    day = load_day("2025-05-21", np.array([et_to_ns("2025-05-21", "09:30:05")]), data_dir=tmp_path)
+    bid_px, bid_sz, ask_px, ask_sz = day.book(int(day.book_rows[0]))
+    assert bid_sz[0] == 9 and ask_sz[0] == 3  # Level 2 size where it has the price, else the Level 1 size

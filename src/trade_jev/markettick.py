@@ -9,8 +9,9 @@ MarketTick rows (UTC): Level 1 `ts;1;type;price;volume` (type 0 bid, 1 ask, 2 tr
 `ts;2;type;price;volume;depth;action` (action 0 add, 1 update, 2 remove). Their Level 2 rows don't rebuild into a
 consistent book by position (checked 2026-10-09: best bid/ask matched the file's own Level 1 under 3% of the time), but
 keyed by price, with levels better than the Level 1 quote dropped as stale, 99.1% of rows sit within one level of their
-stated depth. So: level 1 of each row is the Level 1 quote (exact), levels 2-10 come from that price-keyed book
-(approximate), and trades are signed against the quote (at/above the ask = buy, at/below the bid = sell).
+stated depth. So: level 1 of each row is the Level 1 quote's price (exact) with the Level 2 size at that price (Level 1
+sizes run about half of it), levels 2-10 come from that price-keyed book (approximate), and trades are signed against
+the quote (at/above the ask = buy, at/below the bid = sell).
 
 A row is written on every change of the best bid / ask price, and otherwise at most every 100 ms (trades in between
 are summed into it), between 09:25 and 16:00 ET; the book is built from the file's start.
@@ -93,11 +94,11 @@ def convert(path: Path, out_dir: Path = OUT) -> dict:
             ts = _ns(r[0], cache)
             if r[2] == "0":
                 bb, bbs = px, vol
-                for p in [p for p in bids if p >= bb]:
+                for p in [p for p in bids if p > bb]:
                     del bids[p]
             elif r[2] == "1":
                 ba, bas = px, vol
-                for p in [p for p in asks if p <= ba]:
+                for p in [p for p in asks if p < ba]:
                     del asks[p]
             elif bb is not None and ba is not None:
                 delta += vol if px >= ba else -vol if px <= bb else 0
@@ -116,8 +117,10 @@ def convert(path: Path, out_dir: Path = OUT) -> dict:
             top = (bb, ba)
             bp = [bb] + sorted((p for p in bids if p < bb), reverse=True)[:LEVELS - 1]
             ap = [ba] + sorted(p for p in asks if p > ba)[:LEVELS - 1]
-            bs = [bbs] + [bids[p] for p in bp[1:]]
-            as_ = [bas] + [asks[p] for p in ap[1:]]
+            # Level 1 sizes run about half the Level 2 size at the same price (median 3 vs 6, equal 16% of the time on
+            # 2025-05-21), so the size comes from Level 2 when it has the quote's price
+            bs = [bids.get(bb, bbs)] + [bids[p] for p in bp[1:]]
+            as_ = [asks.get(ba, bas)] + [asks[p] for p in ap[1:]]
             while len(bp) < LEVELS:
                 bp.append(bp[-1] - 1); bs.append(0)
             while len(ap) < LEVELS:
