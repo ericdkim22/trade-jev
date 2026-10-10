@@ -963,7 +963,8 @@ async def amain() -> None:
                     help="live, started after 09:30: skip replaying the session so far")
     ap.add_argument("--baselines", default="hold,random,imbalance")
     ap.add_argument("--encoder", default="raw_l10")
-    ap.add_argument("--variants", default="", help="extra Jev traders by encoder, e.g. features (live Jev only)")
+    ap.add_argument("--question", default="scalp", help="Jev question variant (policies.QUESTIONS)")
+    ap.add_argument("--variants", default="", help="extra Jev traders: encoder or encoder/question, e.g. features,raw_l10/next15")
     ap.add_argument("--model", default="jev-latest")
     ap.add_argument("--jev-timeout", type=float, default=8.0, help="seconds; a timeout counts as HOLD")
     ap.add_argument("--min-conf", type=float, default=DEFAULT.min_conf)
@@ -1030,8 +1031,9 @@ async def amain() -> None:
         from typesafe_sdk import AsyncTypeSafeClient
         client = AsyncTypeSafeClient()
         cache, limiter = JsonlCache(ROOT / "cache" / "jev.jsonl"), RateLimiter(15)
-        jev = JevPolicy(client, cache, limiter, encoder=args.encoder, model=args.model)
-        variants = [JevPolicy(client, cache, limiter, encoder=v, model=args.model)
+        jev = JevPolicy(client, cache, limiter, encoder=args.encoder, model=args.model, question=args.question)
+        variants = [JevPolicy(client, cache, limiter, encoder=v.split("/")[0], model=args.model,
+                              question=(v.split("/") + ["scalp"])[1])
                     for v in args.variants.split(",") if v and v != args.encoder]
     if jev is not None:
         jev.timeout_s = args.jev_timeout

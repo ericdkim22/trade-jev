@@ -28,7 +28,7 @@ def build_policies(names: list[str], args) -> tuple[list, object | None]:
             from typesafe_sdk import AsyncTypeSafeClient
             client = AsyncTypeSafeClient()
             jev = JevPolicy(client, JsonlCache(ROOT / "cache" / "jev.jsonl"),
-                            RateLimiter(args.rps), encoder=args.encoder, model=args.model)
+                            RateLimiter(args.rps), encoder=args.encoder, model=args.model, question=args.question)
             out.append(Gated(jev, args.min_conf, args.agree, args.min_hold)
                        if args.agree > 1 or args.min_conf > 0 or args.min_hold > 0 else jev)
         else:
@@ -42,6 +42,7 @@ async def main() -> None:
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--policies", default="jev,hold,random,imbalance")
     ap.add_argument("--encoder", default="raw_l10")
+    ap.add_argument("--question", default="scalp", help="Jev question variant (policies.QUESTIONS)")
     ap.add_argument("--model", default="jev-latest")
     ap.add_argument("--rps", type=float, default=15.0, help="Jev requests/sec (limit is 20)")
     ap.add_argument("--parallel-days", type=int, default=3, help="days held in memory at once")

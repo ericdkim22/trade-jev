@@ -70,3 +70,23 @@ def test_history_retires_only_clear_losers_with_enough_days():
     base["history"], idea["history"] = hist(40, -10.0), hist(40, -5.0)
     R.judge_history(idea, base)
     assert idea["status"] == "testing"  # lost money, but less than the live strategy: keep testing on live days
+
+
+def test_question_is_part_of_the_fingerprint_and_the_backtest():
+    led = {"ideas": []}
+    R.seed(led)
+    i = R.add(led, "raw_l10", DEFAULT, "manual", "rules-aware question", "2026-10-10", question="target")
+    assert i["key"].startswith("raw_l10/target|") and R.key("raw_l10", DEFAULT) == R.find(led, R.key("raw_l10", DEFAULT))["key"]
+    with pytest.raises(ValueError, match="unknown question"):
+        R.add(led, "raw_l10", DEFAULT, "manual", "", "2026-10-10", question="nope")
+    args = R._run_args(("raw_l10", "next15"))
+    assert args[args.index("--max-hold-s") + 1] == "900" and args[args.index("--question") + 1] == "next15"
+    assert R._label(("raw_l10", "scalp")) == "raw_l10" and R._label(("features", "next15")) == "features-next15"
+
+
+def test_jev_policy_names_and_questions():
+    from trade_jev.policies import QUESTIONS, JevPolicy
+    p = JevPolicy(None, None, None, encoder="raw_l10", question="next15")
+    assert p.name == "jev[raw_l10/next15]" and p.question is QUESTIONS["next15"]
+    assert JevPolicy(None, None, None).name == "jev[raw_l10]"
+    assert "15 minutes" in QUESTIONS["next15"].instructions and "+25 points" in QUESTIONS["target"].instructions

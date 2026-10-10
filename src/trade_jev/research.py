@@ -38,6 +38,7 @@ from pathlib import Path
 from trade_jev import ROOT
 from trade_jev.data import LIVE_DIR, list_days
 from trade_jev.encode import ENCODERS
+from trade_jev.policies import QUESTION_SETTINGS, QUESTIONS
 from trade_jev.replay import load_market, load_runs, replay_day
 from trade_jev.settings import DEFAULT, Settings
 
@@ -61,8 +62,8 @@ GRID = {                 # as scripts/replay_grid.py
 
 # ---------------------------------------------------------------- registry
 
-def key(encoder: str, s: Settings) -> str:
-    return f"{encoder}|conf={float(s.min_conf):g}|agree={int(s.agree)}|hold={float(s.min_hold_s):g}" \
+def key(encoder: str, s: Settings, question: str = "scalp") -> str:
+    return f"{encoder}{'' if question == 'scalp' else '/' + question}|conf={float(s.min_conf):g}|agree={int(s.agree)}|hold={float(s.min_hold_s):g}" \
            f"|stop={int(s.stop_ticks)}|target={int(s.target_ticks)}" + \
            (f"|maxhold={float(s.max_hold_s):g}" if s.max_hold_s else "") + \
            (f"|breakeven={int(s.breakeven_ticks)}" if s.breakeven_ticks else "")
@@ -87,14 +88,17 @@ def find(ledger: dict, k: str) -> dict | None:
     return next((i for i in ledger["ideas"] if i["key"] == k), None)
 
 
-def add(ledger: dict, encoder: str, s: Settings, source: str, note: str, added: str, idea_id: str | None = None) -> dict:
+def add(ledger: dict, encoder: str, s: Settings, source: str, note: str, added: str, idea_id: str | None = None,
+        question: str = "scalp") -> dict:
     """Register an idea. Raises ValueError if the same idea was already tried."""
     if encoder not in ENCODERS:
         raise ValueError(f"unknown encoder {encoder!r}; have {sorted(ENCODERS)}")
-    k = key(encoder, s)
+    if question not in QUESTIONS:
+        raise ValueError(f"unknown question {question!r}; have {sorted(QUESTIONS)}")
+    k = key(encoder, s, question)
     if (old := find(ledger, k)) is not None:
         raise ValueError(f"already tried as {old['id']!r} (added {old['added']}): {old['status']}")
-    idea = {"id": idea_id or f"i{len(ledger['ideas']) + 1:03d}", "key": k, "encoder": encoder,
+    idea = {"id": idea_id or f"i{len(ledger['ideas']) + 1:03d}", "key": k, "encoder": encoder, "question": question,
             "settings": asdict(s), "source": source, "note": note, "added": added,
             "status": "testing", "days": {}}
     ledger["ideas"].append(idea)
@@ -145,13 +149,33 @@ def judge(idea: dict, base: dict) -> None:
 
 # ---------------------------------------------------------------- nightly steps
 
-def backtest(encoder: str, day: str) -> Path | None:
-    """Jev answers for one encoder on one recorded day (default settings), via trade_jev.run. Cached Jev calls are free."""
+def source(idea: dict) -> tuple[str, str]:
+    """What produces an idea's Jev answers: (encoder, question)."""
+    return idea["encoder"], idea.get("question", "scalp")
+
+
+def _label(src: tuple[str, str]) -> str:
+    return src[0] if src[1] == "scalp" else f"{src[0]}-{src[1]}"
+
+
+def _run_args(src: tuple[str, str]) -> list[str]:
+    """trade_jev.run arguments for a source: its encoder, question, and the exits the question is traded with
+    (Jev's answers depend on the position it holds, so the backtest runs with those exits)."""
+    enc, q = src
+    s = QUESTION_SETTINGS.get(q, DEFAULT)
+    return ["--policies", "jev", "--encoder", enc, "--question", q, "--commission", str(COMMISSION),
+            "--min-conf", str(s.min_conf), "--agree", str(s.agree), "--min-hold", str(s.min_hold_s),
+            "--stop-ticks", str(s.stop_ticks), "--target-ticks", str(s.target_ticks), "--max-hold-s", str(s.max_hold_s),
+            "--breakeven-ticks", str(s.breakeven_ticks)]
+
+
+def backtest(src: tuple[str, str], day: str) -> Path | None:
+    """Jev answers for one source on one recorded day, via trade_jev.run. Cached Jev calls are free."""
+    encoder = _label(src)
     out = ROOT / "runs" / f"research-{encoder}-{day}"
     if (out / "results.json").exists():
         return out
-    cmd = [sys.executable, "-m", "trade_jev.run", "--days", day, "--policies", "jev", "--encoder", encoder,
-           "--commission", str(COMMISSION), "--run-id", out.name]
+    cmd = [sys.executable, "-m", "trade_jev.run", "--days", day, *_run_args(src), "--run-id", out.name]
     r = subprocess.run(cmd, cwd=ROOT, env={**os.environ, "PYTHONUTF8": "1"}, capture_output=True, text=True)
     if r.returncode or not (out / "results.json").exists():
         print(f"  backtest {encoder} {day} failed:\n{r.stdout[-800:]}{r.stderr[-800:]}", flush=True)
@@ -174,12 +198,12 @@ def evaluate(ledger: dict, days: list[str]) -> None:
         todo = [i for i in open_ideas if day not in i["days"]]
         if not todo:
             continue
-        runs = {e: backtest(e, day) for e in sorted({i["encoder"] for i in todo})}
+        runs = {src: backtest(src, day) for src in sorted({source(i) for i in todo})}
         market = None
         for idea in todo:
-            if runs[idea["encoder"]] is None:
+            if runs[source(idea)] is None:
                 continue
-            rd = load_runs([runs[idea["encoder"]]])[day]
+            rd = load_runs([runs[source(idea)]])[day]
             if market is None:
                 market = load_market(rd)
             r = asyncio.run(replay_day(rd, *market, settings_of(idea)))
@@ -191,13 +215,13 @@ def history_days() -> list[str]:
     return HISTORY_DAYS.read_text().strip().split(",") if HISTORY_DAYS.exists() else []
 
 
-def history_backtest(encoder: str, days: list[str]) -> Path | None:
-    """One backtest per encoder over the whole MarketTick sample (Jev calls, cached)."""
+def history_backtest(src: tuple[str, str], days: list[str]) -> Path | None:
+    """One backtest per source over the whole MarketTick sample (Jev calls, cached)."""
+    encoder = _label(src)
     out = ROOT / "runs" / f"hist-{encoder}"
     if (out / "results.json").exists():
         return out
-    cmd = [sys.executable, "-m", "trade_jev.run", "--days", ",".join(days), "--policies", "jev", "--encoder", encoder,
-           "--commission", str(COMMISSION), "--run-id", out.name]
+    cmd = [sys.executable, "-m", "trade_jev.run", "--days", ",".join(days), *_run_args(src), "--run-id", out.name]
     env = {**os.environ, "PYTHONUTF8": "1", "TRADE_JEV_DATA": str(ROOT / "data" / "history")}
     print(f"  history backtest {encoder} on {len(days)} days (about {len(days) * 1.8:.0f} min)", flush=True)
     r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
@@ -216,16 +240,16 @@ def evaluate_history(ledger: dict, max_new_backtests: int = 1) -> None:
     from trade_jev import data
     old_dir, data.DATA_DIR = data.DATA_DIR, ROOT / "data" / "history"
     try:
-        for enc in sorted({i["encoder"] for i in open_ideas}, key=lambda e: e != "raw_l10"):  # the baseline's first
-            todo = [i for i in open_ideas if i["encoder"] == enc and len(i.get("history", {})) < len(days)]
+        for src in sorted({source(i) for i in open_ideas}, key=lambda s: s != ("raw_l10", "scalp")):  # baseline first
+            todo = [i for i in open_ideas if source(i) == src and len(i.get("history", {})) < len(days)]
             if not todo:
                 continue
-            run = ROOT / "runs" / f"hist-{enc}"
+            run = ROOT / "runs" / f"hist-{_label(src)}"
             if not (run / "results.json").exists():
                 if max_new_backtests <= 0:
                     continue
                 max_new_backtests -= 1
-                if history_backtest(enc, days) is None:
+                if history_backtest(src, days) is None:
                     continue
             runs = load_runs([run])
             for day in days:
@@ -291,7 +315,7 @@ def report(ledger: dict) -> str:
         hd = [d for d in h if d in bh]
         hist = (f"${sum(h[d]['pnl'] for d in hd):,.0f} vs ${sum(bh[d]['pnl'] for d in hd):,.0f} "
                 f"({len(hd)} d, {sum(h[d]['trades'] for d in hd)} tr)") if hd else "-"
-        return (f"| {i['id']} | {i['encoder']} | {settings_of(i).label()} | {i['source']} | {i['added']} | "
+        return (f"| {i['id']} | {_label(source(i))} | {settings_of(i).label()} | {i['source']} | {i['added']} | "
                 f"{len(oos)}/{MIN_OOS_DAYS} | ${net:,.2f} | ${live:,.2f} | ${all_net:,.2f} ({trades}) | {hist} | "
                 f"{i['note']} |")
 
@@ -337,6 +361,7 @@ def main() -> None:
     sub.add_parser("list")
     a = sub.add_parser("add")
     a.add_argument("--encoder", default="raw_l10")
+    a.add_argument("--question", default="scalp", help="Jev question variant (policies.QUESTIONS)")
     for f, v in asdict(DEFAULT).items():
         a.add_argument(f"--{f.replace('_', '-')}", type=type(v), default=v)
     a.add_argument("--note", required=True)
@@ -359,7 +384,7 @@ def main() -> None:
         s = Settings(args.min_conf, args.agree, args.min_hold_s, args.stop_ticks, args.target_ticks,
                      args.max_hold_s, args.breakeven_ticks)
         try:
-            idea = add(ledger, args.encoder, s, "manual", args.note, str(date.today()))
+            idea = add(ledger, args.encoder, s, "manual", args.note, str(date.today()), question=args.question)
         except ValueError as e:
             sys.exit(f"not added: {e}")
         save(ledger)

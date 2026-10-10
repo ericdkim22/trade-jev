@@ -14,7 +14,7 @@ import numpy as np
 from typesafe_sdk import AsyncTypeSafeClient, Choice
 
 from trade_jev.encode import ENCODERS, Context
-from trade_jev.settings import DEFAULT
+from trade_jev.settings import DEFAULT, Settings
 
 ACTIONS = ("BUY", "SELL", "HOLD")
 
@@ -49,6 +49,34 @@ ACTION_QUESTION = Choice(
                 "No clear edge, or the current position is still fine.",
     },
 )
+
+
+_SIDES = ACTION_QUESTION.criteria
+_INPUTS = ("Using the market state (order book or features derived from it, recent prices, net aggressor volume: "
+           "positive = buyers lifting offers, negative = sellers hitting bids) and our current `position`, ")
+
+# Question variants (research dimension next to the input encoder). "scalp" is the original; its cache keys are unchanged.
+QUESTIONS: dict[str, Choice] = {
+    "scalp": ACTION_QUESTION,
+    # the exits Jev is actually traded with, instead of a 1-5 minute horizon a 25-point target rarely fits in
+    "target": Choice(
+        instructions=("You trade one Micro / E-mini Nasdaq-100 futures contract. Every position closes automatically at "
+                      f"+{DEFAULT.target_ticks / 4:g} points (target) or -{DEFAULT.stop_ticks / 4:g} points (stop) "
+                      "from its entry. " + _INPUTS + "choose the side most likely to reach its target before its stop. "
+                      "Each trade pays the bid-ask spread plus commission, so only act when one side is clearly more "
+                      "likely to reach its target first."),
+        criteria=dict(_SIDES)),
+    # a longer horizon, traded with matching exits (QUESTION_SETTINGS)
+    "next15": Choice(
+        instructions=("You trade one Micro / E-mini Nasdaq-100 futures contract. A position is closed after 15 minutes, "
+                      "or earlier at +25 points (target) or -25 points (stop). " + _INPUTS + "choose the side the price "
+                      "is more likely to move over the next 15 minutes. Each trade pays the bid-ask spread plus "
+                      "commission, so only act when one direction is clearly more likely."),
+        criteria=dict(_SIDES)),
+}
+QUESTION_SETTINGS: dict[str, Settings] = {  # exits a question is meant to be traded with (default: DEFAULT)
+    "next15": Settings(stop_ticks=100, target_ticks=100, max_hold_s=900),
+}
 
 
 class RateLimiter:
@@ -92,18 +120,19 @@ class JevPolicy:
     name = "jev"
 
     def __init__(self, client: AsyncTypeSafeClient, cache: JsonlCache, limiter: RateLimiter,
-                 encoder: str = "raw_l10", model: str = "jev-latest"):
+                 encoder: str = "raw_l10", model: str = "jev-latest", question: str = "scalp"):
         self.client, self.cache, self.limiter = client, cache, limiter
         self.encode = ENCODERS[encoder]
         self.model = model
-        self.name = f"jev[{encoder}]"
+        self.question = QUESTIONS[question]
+        self.name = f"jev[{encoder}]" if question == "scalp" else f"jev[{encoder}/{question}]"
         self.api_calls = 0
         self.cache_hits = 0
 
     async def __call__(self, ctx: Context) -> Decision:
         state = self.encode(ctx)
-        q = {"type": "choice", "instructions": ACTION_QUESTION.instructions,
-             "criteria": dict(ACTION_QUESTION.criteria)}
+        q = {"type": "choice", "instructions": self.question.instructions,
+             "criteria": dict(self.question.criteria)}
         key = hashlib.sha256(json.dumps([self.model, state, q], sort_keys=True).encode()).hexdigest()
         if (hit := self.cache.get(key)) is not None:
             self.cache_hits += 1
@@ -111,7 +140,7 @@ class JevPolicy:
 
         await self.limiter.wait()
         self.api_calls += 1
-        res = await self.client.system_one(state, {"action": ACTION_QUESTION}, model=self.model)
+        res = await self.client.system_one(state, {"action": self.question}, model=self.model)
         ans = res.choices["action"]
         tokens = res.usage.input_tokens or 0
         self.cache.put(key, {"choice": ans.choice, "probs": dict(ans.probabilities),
