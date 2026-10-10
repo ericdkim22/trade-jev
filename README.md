@@ -24,6 +24,18 @@ TRADE_JEV_DATA=data/sample uv run python -m trade_jev.run --days 2026-06-23 --po
 
 **In git:** code, docs, `data/sample/` (synthetic), `results/` (published runs), `runs/index.jsonl`. **Local only:** Databento data (incl. `data/live/` recordings), `runs/<id>/` (includes the order books Jev saw), `cache/`, `.env`.
 
+## 0b) CSV tick data (e.g. MNQ from `C:\Transfer`)
+
+Got vendor CSV exports instead of Databento? `trade_jev.ingest` converts candles, L1 ticks and L2 ticks (formats in [`data/DATA.md`](data/DATA.md#csv-tick-exports)) into the same day files, in `data/csv/` (gitignored). It rebuilds the 10-level book from the L2 add / update / remove events. Everything below then works on those days. MNQ is priced at $2/point ($0.50/tick); pass a micro commission, e.g. `--commission 0.62`.
+
+```bash
+uv run python -m trade_jev.ingest "C:\Transfer" --scan     # what's there: kind, delimiter, first timestamp
+uv run python -m trade_jev.ingest "C:\Transfer"            # convert (depth semantics auto-detected)
+uv run python -m trade_jev.run --all --policies hold,random,imbalance --commission 0.62
+```
+
+Or do all of it from the browser: `uv run python -m trade_jev.view` → **Backtest** tab (import a folder → tick days → start a backtest → compare policies). No data at hand? `uv run python scripts/make_csv_sample.py` writes a synthetic CSV export to `data/csv-sample/`.
+
 ## 1) Run
 
 Asks Jev every 15s and trades 1 contract next to the hold / random / imbalance baselines. It prints Jev calls and P&L, saves to `runs/<id>/`, and appends to `runs/index.jsonl`, which the viewer lists.
@@ -66,6 +78,8 @@ uv run python -m trade_jev.view --port 9000 --no-open
 ```
 
 Links keep the view: `?sel=<run>@<day>,<run>@<day>&minConf=0.6&agree=2&minHold=60&stop=400&target=0` plus `&play=1` (autoplay) or `&at=11:02` (jump to a time).
+
+The **Backtest** tab (`/backtest`) is the start-to-finish dashboard: import a CSV folder and see what's in it, browse each day (1-minute price, buyer- and seller-initiated volume, book quality), choose policies and settings, start a run (the same `trade_jev.run` process, with its log streamed to the page), then compare the results: P&L by policy, a cumulative equity chart, P&L by day and every trade. It lists every run on disk, baseline-only runs included. Runs that include Jev also open in Replay.
 
 ## 5) Publish
 

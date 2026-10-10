@@ -2,7 +2,8 @@
 
   uv run python -m trade_jev.view            # → http://localhost:8765
 
-Serves viz/index.html (Replay), viz/live.html (Live), viz/docs.html (Docs) plus a small JSON API:
+Serves viz/index.html (Replay), viz/backtest.html (Backtest), viz/live.html (Live),
+viz/docs.html (Docs) plus a small JSON API (the Backtest tab's /api/bt/* is in trade_jev.dashboard):
   GET /api/runs                  runs from runs/index.jsonl that have stored Jev answers
   GET /api/day?run=<id>&day=<d>  one day's price track + stored answers (built once, cached)
   GET /api/live/state            live session snapshot ({"active": false} without trade_jev.live)
@@ -26,7 +27,8 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from trade_jev.data import TICK, POINT_VALUE, secs
+from trade_jev import dashboard
+from trade_jev.data import TICK, secs
 from trade_jev.replay import RunDay, load_market, load_runs
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,7 +100,7 @@ def build_day(run_id: str, rd: RunDay) -> dict:
     fills = day.row_at(np.array([d["t_ns"] for d in decs]) + secs(cfg.latency_ms / 1000))  # as the harness
     return {
         "run_id": run_id, "day": rd.day, "symbol": day.symbol, "t0_ns": t0,
-        "tick": TICK, "point_value": POINT_VALUE, "commission": cfg.commission,
+        "tick": TICK, "point_value": day.point_value, "commission": cfg.commission,
         "track": second_track(day, t0, t1),
         "decisions": [{
             "t": round((d["t_ns"] - t0) / 1e9, 3),
@@ -174,9 +176,28 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             live.bus.unsubscribe(q)
 
+    def _same_origin(self) -> bool:
+        """POSTs start paid runs: only accept JSON from this page (blocks cross-site form posts)."""
+        if not self.headers.get("Content-Type", "").startswith("application/json"):
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or urlparse(origin).netloc == self.headers.get("Host")
+
     def do_POST(self):
         url = urlparse(self.path)
         live = getattr(self.server, "live", None)
+        if not self._same_origin():
+            return self._error(HTTPStatus.FORBIDDEN, "JSON from the viewer page only")
+        bt = {"/api/bt/scan": dashboard.scan_folder, "/api/bt/ingest": dashboard.start_ingest,
+              "/api/bt/run": dashboard.start_run, "/api/bt/cancel": dashboard.cancel}
+        if url.path in bt:
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                return self._json(bt[url.path](body))
+            except KeyError as e:
+                return self._error(HTTPStatus.NOT_FOUND, f"unknown {e}")
+            except (ValueError, TypeError, OSError) as e:
+                return self._error(HTTPStatus.BAD_REQUEST, str(e))
         if url.path != "/api/live/fill":
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         if live is None:
@@ -194,6 +215,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path in ("/", "/index.html"):
                 self._send((VIZ / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path in ("/backtest", "/backtest.html"):
+                self._send((VIZ / "backtest.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path == "/api/bt/env":
+                self._json(dashboard.env())
+            elif url.path == "/api/bt/days":
+                self._json(dashboard.days())
+            elif url.path == "/api/bt/day":
+                self._send(gzip.compress(json.dumps(dashboard.day_overview(q.get("day", ""))).encode(), 5),
+                           "application/json", gz=True)
+            elif url.path == "/api/bt/results":
+                self._json(dashboard.results())
+            elif url.path == "/api/bt/result":
+                self._send(gzip.compress(json.dumps(dashboard.result(q.get("id", ""))).encode(), 5),
+                           "application/json", gz=True)
+            elif url.path == "/api/bt/jobs":
+                self._json(dashboard.jobs())
+            elif url.path == "/api/bt/job":
+                self._json(dashboard.job(q.get("id", ""), int(q.get("since", 0))))
             elif url.path in ("/live", "/live.html"):
                 self._send((VIZ / "live.html").read_bytes(), "text/html; charset=utf-8")
             elif url.path in ("/docs", "/docs.html"):
@@ -223,7 +262,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._error(HTTPStatus.NOT_FOUND, "not found")
         except KeyError as e:
-            self._error(HTTPStatus.NOT_FOUND, f"no stored answers for {e}")
+            self._error(HTTPStatus.NOT_FOUND, f"not found: {e}")
+        except FileNotFoundError as e:
+            self._error(HTTPStatus.NOT_FOUND, f"not found: {e.filename}")
         except BrokenPipeError:
             pass
 

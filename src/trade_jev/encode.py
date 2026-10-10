@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from trade_jev.data import TICK, Day, ns_to_et
+from trade_jev.data import TICK, Day, instrument_name, ns_to_et
 
 
 @dataclass
@@ -64,7 +64,7 @@ def raw_l10(ctx: Context) -> dict:
     b = ctx.book
     bid_px, bid_sz, ask_px, ask_sz = b
     return {
-        "instrument": f"{ctx.day.symbol} (Nasdaq-100 E-mini futures, tick size 0.25, $5 per tick)",
+        "instrument": f"{ctx.day.symbol} ({instrument_name(ctx.day.symbol)})",
         "time_et": ns_to_et(ctx.t_ns),
         "position": _position_state(ctx),
         "order_book": {

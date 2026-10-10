@@ -8,11 +8,14 @@ Backtests read NQ order-book data from Databento: one Parquet file per trading d
 data/
   DATA.md          ← this file
   databento/       ← put the day files here (gitignored)
+  csv/             ← days converted from CSV tick exports by trade_jev.ingest (gitignored)
   live/            ← days recorded by the live runner (gitignored)
   sample/          ← 10 synthetic snapshots in the same shape (committed)
 ```
 
 To keep the files somewhere else, set `TRADE_JEV_DATA=/path/to/files` in `.env`.
+
+Loader precedence for a day in several folders: `TRADE_JEV_DATA` > `data/csv/` > `data/live/`.
 
 The live runner (`python -m trade_jev.live`) records each session to `data/live/` (gitignored), in the same format with a `__live` suffix. The loader reads both folders. If a day exists in both, the `TRADE_JEV_DATA` file wins.
 
@@ -87,3 +90,23 @@ This is a sketch of what the original downloader did; that downloader lived in a
 ```bash
 TRADE_JEV_DATA=data/sample uv run python -m trade_jev.run --days 2026-06-23 --policies hold,random,imbalance
 ```
+
+## CSV tick exports
+
+`python -m trade_jev.ingest <folder>` reads vendor CSV exports and writes `CSV__{symbol}__mbp-10__rth__{day}__{l2|l1}.parquet` + sidecar into `data/csv/`. These are the same columns as above, so the loader, harness and viewer don't know the difference. Each file's kind is sniffed from its first lines: delimiter `;` `,` tab or `|`, an optional header, and `.gz` are all fine.
+
+| Kind | Fields |
+|---|---|
+| Candles | `YYYYMMDDhhmmss`, type, open, high, low, close, volume |
+| L1 ticks | `YYYYMMDDhhmmssffffff`, level, type, price, volume |
+| L2 ticks | `YYYYMMDDhhmmssffffff`, level, type, price, volume, depth (1–10), action (0 add, 1 update, 2 remove) |
+
+Type: 0 bid, 1 ask, 2 last trade; 3–9 (daily volume / high / low, settlement, …) are ignored. Timestamps are UTC.
+
+- **Book:** L2 bid/ask events are applied in order. All events with one timestamp make one book row. Vendors differ on what `depth` means, so `--depth-mode auto` replays the first 300k events three ways and keeps the reading with the fewest crossed or out-of-order books. The readings are `insert` (add shifts deeper levels down, remove shifts them up; NinjaTrader-style), `set` (fixed slots) and `price` (levels keyed by price). The scores go in the sidecar (`depth_mode_scores`). If `crossed_rows` is more than about 1% of `rows`, try another mode.
+- **Trades → `trade_delta`:** +size at or above the best ask, −size at or below the best bid, otherwise the tick rule. The sidecar counts how many trades each rule classified.
+- **Window:** rows are kept 08:30–17:00 ET (`--session`). A gap of 15+ minutes clears the book.
+- **Missing levels** (thin book at the open) are padded one tick apart with size 0 (`padded_rows`).
+- **L1-only days** (no L2 file covers them) get the touch only, with levels 2–10 padded (`"levels": 1`). Jev and the imbalance rule then see an empty ladder, so prefer L2.
+- **Candles** go to `data/csv/bars/` for the dashboard chart. The backtest needs ticks.
+- **Speed:** about 100–150k events/s in pure Python, so a busy L2 day of 20M events takes a few minutes. It's a one-off.

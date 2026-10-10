@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  try { if (localStorage.getItem("jev-viewer-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+</script>
+<title>Jev Backtest</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.04);
+  --long: #2a78d6; --short: #eb6834; --good: #006300; --bad: #d03b3b; --warn: #a86b00;
+  --p1: #1baf7a; --p2: #4a3aa7; --p3: #e87ba4; --p4: #eda100;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+    --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767; --warn: #e0a030;
+    --p1: #199e70; --p2: #9085e9; --p3: #d55181; --p4: #c98500;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+  --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767; --warn: #e0a030;
+  --p1: #199e70; --p2: #9085e9; --p3: #d55181; --p4: #c98500;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+h3 { font-size: 13px; margin: 0 0 10px; font-weight: 600; }
+.sub { color: var(--ink-2); font-weight: 400; }
+.muted { color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; min-width: 0; }
+.stack > * + * { margin-top: 12px; }
+button, select, input { font: inherit; }
+.btn, .chip { border: 1px solid var(--ring); background: var(--surface); color: var(--ink-2); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.btn:hover, .chip:hover { background: var(--wash); }
+.btn:disabled, .chip:disabled { opacity: .5; cursor: default; }
+.btn.primary { color: var(--ink); font-weight: 600; border-color: var(--ink-2); }
+.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink-2); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.pos { color: var(--good); } .neg { color: var(--bad); } .warn { color: var(--warn); }
+.nav { display: flex; gap: 4px; align-self: center; }
+.nav a { color: var(--ink-2); text-decoration: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 10px; font-size: 13px; }
+.nav a:hover { background: var(--wash); }
+.nav a[aria-current="page"] { color: var(--ink); border-color: var(--ring); background: var(--surface); font-weight: 600; }
+.step { display: inline-flex; width: 20px; height: 20px; border-radius: 10px; border: 1px solid var(--ring); align-items: center; justify-content: center; font-size: 11px; margin-right: 6px; color: var(--ink-2); }
+input[type=text], input[type=number], select { border: 1px solid var(--ring); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 4px 8px; min-width: 0; }
+input.path { flex: 1 1 280px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 960px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
+.field label { display: block; color: var(--ink-2); font-size: 12px; margin-bottom: 2px; }
+.field input, .field select { width: 100%; }
+.field .hint { color: var(--muted); font-size: 11px; }
+fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+legend { font-size: 12px; color: var(--muted); padding: 0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.tablewrap { overflow: auto; max-height: 360px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+table.data th { position: sticky; top: 0; background: var(--surface); text-align: right; color: var(--ink-2); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.data td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.data th.l, table.data td.l { text-align: left; }
+table.data tbody tr.click { cursor: pointer; }
+table.data tbody tr.click:hover { background: var(--wash); }
+table.data tr.active td { background: var(--wash); font-weight: 600; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+pre.log { margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); max-height: 220px; overflow: auto; background: var(--wash); border-radius: 8px; padding: 8px 10px; }
+pre.log:empty { display: none; }
+.status { font-size: 12px; font-weight: 600; border: 1px solid var(--ring); border-radius: 6px; padding: 0 6px; }
+.status.running { color: var(--long); } .status.done { color: var(--good); } .status.failed, .status.cancelled { color: var(--bad); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--ring); border-radius: 10px; padding: 10px 12px; }
+.tile .k { color: var(--ink-2); font-size: 12px; }
+.tile .v { font-size: 24px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .d { color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 4px 0 2px; }
+.chart-head h2 { font-size: 13px; margin: 0; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: 12px; }
+svg.chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg text.lbl { fill: var(--ink-2); font-weight: 600; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.baseline { stroke: var(--axis); stroke-width: 1; }
+.sep { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }
+.cross { stroke: var(--ink-2); stroke-width: 1; pointer-events: none; }
+#tip { position: fixed; pointer-events: none; z-index: 10; display: none; max-width: 300px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.12); font-size: 12px; color: var(--ink-2); }
+#tip b { color: var(--ink); font-weight: 600; }
+#tip .kv { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); padding: 20px 0; text-align: center; }
+.note { color: var(--muted); font-size: 12px; }
+.err { color: var(--bad); font-size: 12px; }
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--wash); padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main class="stack">
+  <header>
+    <h1>Jev Backtest</h1>
+    <nav class="nav"><a href="/">Replay</a><a href="/backtest" aria-current="page">Backtest</a><a href="/live">Live</a><a href="/docs">Docs</a></nav>
+    <span class="sub">import CSV ticks → pick days → run Jev vs baselines → compare</span>
+    <span class="muted" id="envnote" style="margin-left:auto"></span>
+    <button class="btn" id="theme" aria-label="Toggle dark mode"></button>
+  </header>
+
+  <section class="card">
+    <h3><span class="step">1</span>Import CSV <span class="sub">· candles, L1 and L2 ticks → day files in <code id="csvdir">data/csv</code></span></h3>
+    <div class="row">
+      <input type="text" class="path" id="path" aria-label="CSV folder" spellcheck="false">
+      <input type="text" id="symbol" placeholder="symbol (auto)" aria-label="Symbol" style="width:120px">
+      <label class="muted" for="depthmode">Depth</label>
+      <select id="depthmode" aria-label="Depth semantics">
+        <option value="auto">auto-detect</option><option value="insert">insert / shift</option>
+        <option value="set">fixed slot</option><option value="price">by price</option>
+      </select>
+      <button class="btn" id="scan">Scan</button>
+      <button class="btn primary" id="import">Import</button>
+      <span class="status" id="ingeststatus" hidden></span>
+      <button class="btn" id="ingestcancel" hidden>Cancel</button>
+    </div>
+    <div class="err" id="scanerr"></div>
+    <div class="tablewrap" id="scanwrap" hidden style="margin-top:10px"><table class="data" id="scantable"></table></div>
+    <pre class="log" id="ingestlog"></pre>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:8px">
+      <h3 style="margin:0"><span class="step">2</span>Market data <span class="sub">· tick days to backtest; click a row for its chart</span></h3>
+      <div class="row"><button class="btn" id="selall">Select all</button><button class="btn" id="selnone">Clear</button></div>
+    </div>
+    <div class="tablewrap"><table class="data" id="days"></table></div>
+    <div id="daychart" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card">
+    <h3><span class="step">3</span>Backtest <span class="sub">· same harness as <code>python -m trade_jev.run</code></span></h3>
+    <fieldset>
+      <legend>Policies</legend>
+      <div class="row" id="policies"></div>
+      <div class="note" id="jevnote" style="margin-top:4px"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Jev filter <span class="sub" style="text-transform:none">· gates Jev's answers; baselines ignore it</span></legend>
+      <div class="fields">
+        <div class="field"><label for="min_conf">Cutoff (min prob)</label><input type="number" id="min_conf" step="0.05" min="0" max="1"></div>
+        <div class="field"><label for="agree">Agreeing answers</label><input type="number" id="agree" step="1" min="1" max="50"></div>
+        <div class="field"><label for="min_hold_s">Min hold (s)</label><input type="number" id="min_hold_s" step="5" min="0"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Execution &amp; risk</legend>
+      <div class="fields">
+        <div class="field"><label for="stop_ticks">Stop (ticks, 0 = off)</label><input type="number" id="stop_ticks" step="10" min="0"></div>
+        <div class="field"><label for="target_ticks">Target (ticks, 0 = off)</label><input type="number" id="target_ticks" step="10" min="0"></div>
+        <div class="field"><label for="cadence_s">Decide every (s)</label><input type="number" id="cadence_s" step="1" min="1"></div>
+        <div class="field"><label for="start_et">Start (ET)</label><input type="text" id="start_et" placeholder="09:30:00"></div>
+        <div class="field"><label for="end_et">End (ET)</label><input type="text" id="end_et" placeholder="15:55:00"></div>
+        <div class="field"><label for="latency_ms">Latency (ms)</label><input type="number" id="latency_ms" step="50" min="0"></div>
+        <div class="field"><label for="commission">Commission $/side</label><input type="number" id="commission" step="0.01" min="0"><div class="hint" id="commhint"></div></div>
+      </div>
+    </fieldset>
+    <div class="row">
+      <button class="btn primary" id="runbtn">Start backtest</button>
+      <span class="status" id="runstatus" hidden></span>
+      <button class="btn" id="runcancel" hidden>Cancel</button>
+      <span class="muted" id="estimate"></span>
+    </div>
+    <div class="err" id="runerr"></div>
+    <pre class="log" id="runlog"></pre>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:8px">
+      <h3 style="margin:0"><span class="step">4</span>Results <span class="sub">· every run on disk; click one to open it</span></h3>
+      <button class="btn" id="refresh">Refresh</button>
+    </div>
+    <div class="tablewrap" style="max-height:220px"><table class="data" id="runs"></table></div>
+  </section>
+
+  <section class="stack" id="result" hidden>
+    <section class="card">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <h3 style="margin:0" id="rtitle"></h3>
+        <a class="btn" id="replaylink" hidden>Open in Replay ↗</a>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+    <section class="card">
+      <div class="chart-head">
+        <h2>Cumulative P&amp;L, net of costs</h2>
+        <div class="legend" id="eqlegend"></div>
+        <span class="legend" style="margin-left:auto">realized + open at mid · dashed lines split days</span>
+      </div>
+      <div id="eqchart"></div>
+    </section>
+    <section class="grid2">
+      <div class="card"><h3>P&amp;L by day</h3><div class="tablewrap"><table class="data" id="daily"></table></div></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom:8px">
+          <h3 style="margin:0">Trades</h3><select id="tradepol" aria-label="Policy"></select>
+        </div>
+        <div class="tablewrap"><table class="data" id="trades"></table></div>
+      </div>
+    </section>
+  </section>
+</main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const SVGNS = "http://www.w3.org/2000/svg";
+const etFmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
+const etFmtS = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const et = (sec) => etFmt.format(new Date(sec * 1000));
+const etS = (sec) => etFmtS.format(new Date(sec * 1000));
+const money = (v, d = 2) => v == null ? "–" : (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const sgn = (v) => v > 0 ? "pos" : v < 0 ? "neg" : "";
+const pct = (v, d = 1) => v == null ? "–" : (v * 100).toFixed(d) + "%";
+const int = (v) => v == null ? "–" : Number(v).toLocaleString("en-US");
+// one color per policy, fixed by identity (never by rank)
+const POLICY_COLOR = { jev: "--p2", imbalance: "--p1", random: "--p4", hold: "--p3" };
+const polColor = (name) => css(POLICY_COLOR[name.replace(/\[.*$/, "")] || "--muted");
+const ORDER = ["jev", "imbalance", "random", "hold"];
+const polSort = (a, b) => ORDER.indexOf(a.replace(/\[.*$/, "")) - ORDER.indexOf(b.replace(/\[.*$/, ""));
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("jev-bt-" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("jev-bt-" + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+const S = { env: null, days: [], sel: new Set(store.get("sel", [])), focus: null, runs: [], run: null, commEdited: false };
+
+// ---------------------------------------------------------------- theme
+function paintTheme() {
+  const dark = document.documentElement.dataset.theme === "dark" ||
+    (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  $("theme").textContent = dark ? "☀ Light" : "☾ Dark";
+}
+$("theme").onclick = () => {
+  const dark = $("theme").textContent.includes("Light");
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("jev-viewer-theme", dark ? "light" : "dark"); } catch (e) {}
+  paintTheme(); redraw();
+};
+
+// ---------------------------------------------------------------- tooltip + svg helpers
+const tip = $("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function niceTicks(lo, hi, n = 5) {
+  if (!(hi > lo)) { hi = lo + 1; lo -= 1; }
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function yAxis(svg, ticks, y, x0, x1, fmt) {
+  for (const t of ticks) {
+    el("line", { x1: x0, x2: x1, y1: y(t), y2: y(t), class: t === 0 ? "baseline" : "gridline" }, svg);
+    el("text", { x: x0 - 6, y: y(t) + 4, "text-anchor": "end" }, svg).textContent = fmt(t);
+  }
+}
+
+// ---------------------------------------------------------------- 1 · import
+$("path").value = store.get("path", null) || "";
+$("symbol").value = store.get("symbol", "");
+$("depthmode").value = store.get("depthmode", "auto");
+for (const id of ["path", "symbol", "depthmode"]) $(id).addEventListener("change", () => store.set(id, $(id).value));
+
+$("scan").onclick = async () => {
+  $("scanerr").textContent = ""; $("scan").disabled = true;
+  try {
+    const r = await api("/api/bt/scan", { path: $("path").value });
+    if (!$("symbol").value) $("symbol").placeholder = `symbol (auto: ${r.symbol})`;
+    const kinds = { l2: "L2 ticks", l1: "L1 ticks", candles: "Candles", unknown: "Skipped" };
+    $("scantable").innerHTML = `<thead><tr><th class="l">File</th><th class="l">Kind</th><th>Size</th><th class="l">First record (UTC)</th><th class="l">Delimiter</th><th class="l">Note</th></tr></thead><tbody>` +
+      (r.files.length ? r.files.map((f) => `<tr><td class="l">${esc(f.name)}</td><td class="l ${f.kind === "unknown" ? "warn" : ""}">${kinds[f.kind]}</td>
+        <td>${(f.size / 1e6).toFixed(1)} MB</td><td class="l">${esc(f.first_ts || "–")}</td>
+        <td class="l"><code>${esc(f.delimiter === "\t" ? "tab" : f.delimiter)}</code>${f.header ? " · header" : ""}</td><td class="l muted">${esc(f.note)}</td></tr>`).join("")
+        : `<tr><td class="l muted" colspan="6">No .csv / .txt / .gz files found</td></tr>`) + "</tbody>";
+    $("scanwrap").hidden = false;
+  } catch (e) { $("scanerr").textContent = e.message; }
+  $("scan").disabled = false;
+};
+$("import").onclick = async () => {
+  $("scanerr").textContent = "";
+  try {
+    store.set("path", $("path").value);
+    const j = await api("/api/bt/ingest", { path: $("path").value, symbol: $("symbol").value, depth_mode: $("depthmode").value });
+    follow(j, "ingest");
+  } catch (e) { $("scanerr").textContent = e.message; }
+};
+
+// ---------------------------------------------------------------- jobs
+const following = {};
+function follow(job, kind) {
+  const ui = kind === "ingest"
+    ? { status: $("ingeststatus"), cancel: $("ingestcancel"), log: $("ingestlog"), btn: $("import") }
+    : { status: $("runstatus"), cancel: $("runcancel"), log: $("runlog"), btn: $("runbtn") };
+  ui.log.textContent = ""; following[kind] = { id: job.id, since: 0 };
+  ui.cancel.onclick = () => api("/api/bt/cancel", { id: job.id }).catch(() => {});
+  const tick = async () => {
+    const f = following[kind];
+    if (!f || f.id !== job.id) return;
+    let j;
+    try { j = await api(`/api/bt/job?id=${encodeURIComponent(job.id)}&since=${f.since}`); } catch (e) { setTimeout(tick, 2000); return; }
+    f.since = j.next;
+    if (j.lines.length) {
+      const atEnd = ui.log.scrollTop + ui.log.clientHeight >= ui.log.scrollHeight - 4;
+      ui.log.textContent += (ui.log.textContent ? "\n" : "") + j.lines.join("\n");
+      if (atEnd) ui.log.scrollTop = ui.log.scrollHeight;
+    }
+    ui.status.hidden = false; ui.status.textContent = j.status; ui.status.className = "status " + j.status;
+    ui.cancel.hidden = j.status !== "running"; ui.btn.disabled = j.status === "running";
+    if (j.status === "running") { setTimeout(tick, 800); return; }
+    if (kind === "ingest" && j.status === "done") loadDays();
+    if (kind === "run" && j.status === "done") { await loadRuns(); openRun(j.run_id); }
+  };
+  tick();
+}
+
+// ---------------------------------------------------------------- 2 · days
+async function loadDays() {
+  S.days = await api("/api/bt/days");
+  const have = new Set(S.days.map((d) => d.day));
+  S.sel = new Set([...S.sel].filter((d) => have.has(d)));
+  if (!S.sel.size && S.days.length) S.days.filter((d) => !d.synthetic).forEach((d) => S.sel.add(d.day));
+  renderDays(); defaultCommission(); estimate();
+  if (!S.focus && S.days.length) focusDay((S.days.find((d) => S.sel.has(d.day)) || S.days[0]).day);
+}
+function renderDays() {
+  const t = $("days");
+  if (!S.days.length) {
+    t.innerHTML = `<tbody><tr><td class="l empty">No market data yet. Import a CSV folder above (or put Databento day files in <code>${esc(S.env?.folders.databento || "data/databento")}</code>).</td></tr></tbody>`;
+    return;
+  }
+  t.innerHTML = `<thead><tr><th class="l"></th><th class="l">Day</th><th class="l">Symbol</th><th class="l">Source</th><th>Book rows</th><th>Trades</th><th>Buy vol</th><th>Sell vol</th><th>Crossed</th><th>Padded</th><th class="l">Depth</th></tr></thead><tbody>` +
+    S.days.map((d) => {
+      const src = d.source === "csv-l1" ? `<span class="warn" title="Top of book only; levels 2-10 are padded with size 0">CSV · L1 only</span>`
+        : d.source === "csv-l2" ? "CSV · L2" : esc(d.source) + (d.synthetic ? " · synthetic" : "");
+      const bad = (v, lim) => v == null ? "–" : `<span class="${v > lim ? "warn" : ""}">${pct(v, 2)}</span>`;
+      return `<tr class="click ${S.focus === d.day ? "active" : ""}" data-day="${esc(d.day)}">
+        <td class="l"><input type="checkbox" aria-label="Backtest ${esc(d.day)}" ${S.sel.has(d.day) ? "checked" : ""}></td>
+        <td class="l">${esc(d.day)}</td><td class="l">${esc(d.symbol)}</td><td class="l">${src}</td>
+        <td>${int(d.rows)}</td><td>${int(d.trades)}</td><td>${int(d.buy_volume)}</td><td>${int(d.sell_volume)}</td>
+        <td>${bad(d.crossed, 0.01)}</td><td>${bad(d.padded, 0.05)}</td><td class="l muted">${esc(d.depth_mode || "")}</td></tr>`;
+    }).join("") + "</tbody>";
+  t.querySelectorAll("tbody tr").forEach((tr) => {
+    const day = tr.dataset.day, cb = tr.querySelector("input");
+    cb.onclick = (e) => { e.stopPropagation(); cb.checked ? S.sel.add(day) : S.sel.delete(day); store.set("sel", [...S.sel]); defaultCommission(); estimate(); };
+    tr.onclick = () => focusDay(day);
+  });
+}
+$("selall").onclick = () => { S.days.forEach((d) => S.sel.add(d.day)); store.set("sel", [...S.sel]); renderDays(); defaultCommission(); estimate(); };
+$("selnone").onclick = () => { S.sel.clear(); store.set("sel", []); renderDays(); estimate(); };
+
+async function focusDay(day) {
+  S.focus = day; renderDays();
+  $("daychart").innerHTML = `<div class="empty">Loading ${esc(day)}…</div>`;
+  try { S.overview = await api(`/api/bt/day?day=${encodeURIComponent(day)}`); drawDay(); }
+  catch (e) { $("daychart").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+function drawDay() {
+  const ov = S.overview, box = $("daychart");
+  if (!ov || !ov.t.length) { box.innerHTML = `<div class="empty">No rows in the session window.</div>`; return; }
+  const useBars = $("barsrc")?.value === "bars" && ov.bars;
+  const src = useBars ? { t: ov.bars.t, o: ov.bars.o, h: ov.bars.h, l: ov.bars.l, c: ov.bars.c } : ov;
+  box.innerHTML = `<div class="chart-head"><h2>${esc(ov.symbol)} · ${esc(ov.day)} · 1-minute ${useBars ? esc(ov.bars.type) + " candles (CSV)" : "mid price from the book"}</h2>
+    <div class="legend"><span><span class="sw" style="background:var(--long)"></span>Up minute / buyer-initiated</span><span><span class="sw" style="background:var(--short)"></span>Down minute / seller-initiated</span></div>
+    ${ov.bars ? `<select id="barsrc" aria-label="Price source" style="margin-left:auto"><option value="book">Book mid</option><option value="bars" ${useBars ? "selected" : ""}>CSV candles</option></select>` : ""}</div>`;
+  if ($("barsrc")) $("barsrc").onchange = drawDay;
+  const W = Math.max(320, box.clientWidth), H = 300, VH = 90, m = { l: 64, r: 12, t: 8, b: 22 };
+  const svg = el("svg", { class: "chart", viewBox: `0 0 ${W} ${H + VH + 16}`, role: "img", "aria-label": `Price and aggressor volume for ${ov.day}` }, box);
+  const n = src.t.length, t0 = src.t[0], t1 = src.t[n - 1] + 60;
+  const x = (s) => m.l + (s - t0) / (t1 - t0) * (W - m.l - m.r);
+  const lo = Math.min(...src.l), hi = Math.max(...src.h), pad = (hi - lo) * 0.05 || 1;
+  const y = (v) => m.t + (1 - (v - lo + pad) / (hi - lo + 2 * pad)) * (H - m.t - m.b);
+  yAxis(svg, niceTicks(lo - pad, hi + pad), y, m.l, W - m.r, (v) => v.toLocaleString("en-US", { maximumFractionDigits: 2 }));
+  const bw = Math.max(1, (W - m.l - m.r) / ((t1 - t0) / 60) - 1);
+  const up = css("--long"), dn = css("--short");
+  for (let i = 0; i < n; i++) {
+    const c = src.c[i] >= src.o[i] ? up : dn, cx = x(src.t[i]) + bw / 2;
+    el("line", { x1: cx, x2: cx, y1: y(src.h[i]), y2: y(src.l[i]), stroke: c, "stroke-width": 1 }, svg);
+    const yo = y(src.o[i]), yc = y(src.c[i]);
+    el("rect", { x: x(src.t[i]), y: Math.min(yo, yc), width: bw, height: Math.max(1, Math.abs(yo - yc)), fill: c }, svg);
+  }
+  // time axis: every 30 minutes
+  for (let s = Math.ceil(t0 / 1800) * 1800; s <= t1; s += 1800)
+    el("text", { x: x(s), y: H + VH + 14, "text-anchor": "middle" }, svg).textContent = et(s);
+  // aggressor volume: buys up, sells down from a shared zero line
+  const vy0 = H + VH / 2 - 4, vmax = Math.max(1, ...ov.buy, ...ov.sell);
+  const vy = (v) => vy0 - v / vmax * (VH / 2 - 6);
+  el("line", { x1: m.l, x2: W - m.r, y1: vy0, y2: vy0, class: "baseline" }, svg);
+  el("text", { x: m.l - 6, y: vy0 + 4, "text-anchor": "end" }, svg).textContent = "vol";
+  const vbw = Math.max(1, (W - m.l - m.r) / ((ov.t[ov.t.length - 1] + 60 - ov.t[0]) / 60) - 1);
+  for (let i = 0; i < ov.t.length; i++) {
+    const xx = x(ov.t[i]);
+    if (ov.buy[i]) el("rect", { x: xx, y: vy(ov.buy[i]), width: vbw, height: vy0 - vy(ov.buy[i]), fill: up }, svg);
+    if (ov.sell[i]) el("rect", { x: xx, y: vy0, width: vbw, height: vy(-ov.sell[i]) - vy0, fill: dn }, svg);
+  }
+  const cross = el("line", { class: "cross", y1: m.t, y2: H + VH, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: 0, width: W - m.l - m.r, height: H + VH, fill: "transparent" }, svg);
+  const byT = new Map(ov.t.map((t, i) => [t, i]));
+  hit.addEventListener("pointermove", (ev) => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    const s = t0 + (px - m.l) / (W - m.l - m.r) * (t1 - t0);
+    let i = Math.max(0, Math.min(n - 1, Math.floor((s - t0) / 60)));
+    while (i > 0 && src.t[i] > s) i--;
+    const xx = x(src.t[i]) + bw / 2;
+    cross.setAttribute("x1", xx); cross.setAttribute("x2", xx); cross.setAttribute("visibility", "visible");
+    const k = byT.get(src.t[i]);
+    const f = (v) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    showTip(`<b>${et(src.t[i])} ET</b><div class="kv"><span>Open</span><b>${f(src.o[i])}</b></div><div class="kv"><span>High</span><b>${f(src.h[i])}</b></div>
+      <div class="kv"><span>Low</span><b>${f(src.l[i])}</b></div><div class="kv"><span>Close</span><b>${f(src.c[i])}</b></div>` +
+      (k != null ? `<div class="kv"><span>Buy / sell vol</span><b>${int(ov.buy[k])} / ${int(ov.sell[k])}</b></div>` : ""), ev);
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+// ---------------------------------------------------------------- 3 · run
+const FIELDS = ["min_conf", "agree", "min_hold_s", "stop_ticks", "target_ticks", "cadence_s", "start_et", "end_et", "latency_ms", "commission"];
+function initForm() {
+  const saved = store.get("settings", {});
+  const d = { ...S.env.config, ...S.env.gate };
+  for (const f of FIELDS) $(f).value = saved[f] ?? d[f];
+  S.commEdited = saved.commission != null;
+  const pols = store.get("policies", S.env.typesafe_key ? ["jev", "imbalance", "random", "hold"] : ["imbalance", "random", "hold"]);
+  $("policies").innerHTML = ORDER.map((p) => `<button class="chip" data-p="${p}" aria-pressed="${pols.includes(p) && (p !== "jev" || S.env.typesafe_key)}" ${p === "jev" && !S.env.typesafe_key ? "disabled" : ""}>
+      <span class="sw" style="background:${polColor(p)}"></span>${p === "jev" ? "Jev" : p}</button>`).join("");
+  $("policies").querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+    c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") !== "true"); saveForm(); estimate();
+  });
+  $("jevnote").innerHTML = S.env.typesafe_key
+    ? "Jev = TypeSafe API calls (cached in <code>cache/jev.jsonl</code>, so re-runs on the same books are free). Baselines: imbalance = L10 depth imbalance + 60s flow; random = 20% coin flips; hold = never trades."
+    : `<span class="warn">Jev is off: add <code>TYPESAFE_API_KEY=…</code> to <code>.env</code> and restart the viewer.</span> Baselines still run.`;
+  for (const f of FIELDS) $(f).addEventListener("input", () => { if (f === "commission") S.commEdited = true; saveForm(); estimate(); });
+}
+function saveForm() {
+  const s = {};
+  for (const f of FIELDS) if (f !== "commission" || S.commEdited) s[f] = $(f).value;
+  store.set("settings", s); store.set("policies", selectedPolicies());
+}
+const selectedPolicies = () => [...$("policies").querySelectorAll(".chip")].filter((c) => c.getAttribute("aria-pressed") === "true").map((c) => c.dataset.p);
+function defaultCommission() {
+  const syms = new Set(S.days.filter((d) => S.sel.has(d.day)).map((d) => d.symbol.toUpperCase().startsWith("MNQ") ? "MNQ" : "NQ"));
+  const one = syms.size === 1 ? [...syms][0] : null;
+  if (!S.env) return;
+  $("commhint").textContent = one ? `${one}: $${S.env.commission[one]} default · $${one === "MNQ" ? "0.50" : "5"}/tick` : syms.size > 1 ? "mixed MNQ / NQ days" : "";
+  if (!S.commEdited && one) $("commission").value = S.env.commission[one];
+}
+function secsOf(s) { const [h, m, x] = String(s).split(":").map(Number); return h * 3600 + m * 60 + (x || 0); }
+function estimate() {
+  if (!S.env) return;
+  const n = S.sel.size, cad = Math.max(1, +$("cadence_s").value || 15);
+  const per = Math.max(0, Math.floor((secsOf($("end_et").value) - secsOf($("start_et").value)) / cad));
+  const pols = selectedPolicies();
+  let txt = n ? `${n} day${n > 1 ? "s" : ""} × ${int(per)} decisions` : "Tick at least one day above";
+  if (n && pols.includes("jev")) {
+    const calls = n * per, cost = calls * S.env.avg_tokens * 0.042 / 1e6;
+    txt += ` · up to ${int(calls)} Jev calls (≈ $${cost.toFixed(2)}, ~${Math.ceil(calls / 15 / 60)} min at 15/s; cached answers are free)`;
+  }
+  $("estimate").textContent = txt;
+  $("runbtn").disabled = !n || !pols.length || (following.run && $("runstatus").textContent === "running");
+}
+$("runbtn").onclick = async () => {
+  $("runerr").textContent = "";
+  const settings = {};
+  for (const f of FIELDS) settings[f] = ["start_et", "end_et"].includes(f) ? $(f).value.trim() : Number($(f).value);
+  try {
+    const j = await api("/api/bt/run", { days: [...S.sel].sort(), policies: selectedPolicies(), settings });
+    follow(j, "run");
+  } catch (e) { $("runerr").textContent = e.message; }
+};
+
+// ---------------------------------------------------------------- 4 · results
+async function loadRuns() {
+  S.runs = await api("/api/bt/results");
+  const t = $("runs");
+  if (!S.runs.length) { t.innerHTML = `<tbody><tr><td class="l empty">No runs yet. Start a backtest above.</td></tr></tbody>`; return; }
+  const pols = [...new Set(S.runs.flatMap((r) => Object.keys(r.policies)))].sort(polSort);
+  t.innerHTML = `<thead><tr><th class="l">Run</th><th class="l">Finished</th><th class="l">Days</th>${pols.map((p) => `<th><span class="sw" style="background:${polColor(p)}"></span>${esc(p)}</th>`).join("")}</tr></thead><tbody>` +
+    S.runs.map((r) => `<tr class="click ${S.run?.run_id === r.run_id ? "active" : ""}" data-id="${esc(r.run_id)}"><td class="l">${esc(r.run_id)}</td>
+      <td class="l muted">${esc((r.finished_at || "").replace("T", " "))}</td>
+      <td class="l">${r.days.length === 1 ? esc(r.days[0]) : `${esc(r.days[0])} → ${esc(r.days[r.days.length - 1])} (${r.days.length})`}</td>
+      ${pols.map((p) => { const v = r.policies[p]; return v ? `<td class="${sgn(v.net_pnl)}">${money(v.net_pnl, 0)} <span class="muted">· ${v.trades}</span></td>` : "<td class='muted'>–</td>"; }).join("")}</tr>`).join("") + "</tbody>";
+  t.querySelectorAll("tbody tr").forEach((tr) => tr.onclick = () => openRun(tr.dataset.id));
+}
+$("refresh").onclick = () => loadRuns();
+
+async function openRun(id) {
+  try { S.run = await api(`/api/bt/result?id=${encodeURIComponent(id)}`); } catch (e) { return; }
+  store.set("run", id);
+  loadRuns();
+  const r = S.run, cfg = r.config.config, gate = r.config.gate || {};
+  $("result").hidden = false;
+  const sym = r.equity[0]?.symbol || "";
+  $("rtitle").innerHTML = `${esc(r.run_id)} <span class="sub">· ${esc(sym)} · ${r.config.days.length} day${r.config.days.length > 1 ? "s" : ""} · every ${cfg.cadence_s}s ${esc(cfg.start_et)}–${esc(cfg.end_et)} ET · stop ${cfg.stop_ticks || "off"} / target ${cfg.target_ticks || "off"} ticks · $${cfg.commission}/side${r.config.policies.some((p) => p.startsWith("jev")) ? ` · Jev cutoff ${gate.min_conf}, agree ${gate.agree}, hold ${gate.min_hold_s}s` : ""}</span>`;
+  const jev = r.config.policies.some((p) => p.startsWith("jev"));
+  $("replaylink").hidden = !jev;
+  if (jev) $("replaylink").href = "/?sel=" + r.config.days.map((d) => encodeURIComponent(`${r.run_id}@${d}`)).join(",");
+  const pols = Object.keys(r.summary).sort(polSort);
+  $("tiles").innerHTML = pols.map((p) => {
+    const s = r.summary[p].all, h = r.summary[p].holdout;
+    return `<div class="tile"><div class="k"><span class="sw" style="background:${polColor(p)}"></span>${esc(p)}</div>
+      <div class="v ${sgn(s.net_pnl)}">${money(s.net_pnl, 0)}</div>
+      <div class="d">${s.trades} trades · win ${pct(s.win_rate, 0)} · max DD ${money(s.max_drawdown, 0)}</div>
+      <div class="d">avg win ${money(s.avg_win)} · avg loss ${money(s.avg_loss)}</div>
+      <div class="d">Sharpe ${s.sharpe_daily_ann ?? "–"}${h ? ` · holdout ${money(h.net_pnl, 0)}` : ""}${s.api_cost_usd ? ` · API $${s.api_cost_usd}` : ""}</div></div>`;
+  }).join("");
+  const days = r.config.days.filter((d) => pols.some((p) => d in r.summary[p].all.daily_pnl));
+  $("daily").innerHTML = `<thead><tr><th class="l">Day</th>${pols.map((p) => `<th><span class="sw" style="background:${polColor(p)}"></span>${esc(p)}</th>`).join("")}</tr></thead><tbody>` +
+    days.map((d) => `<tr><td class="l">${esc(d)}</td>${pols.map((p) => { const v = r.summary[p].all.daily_pnl[d]; return `<td class="${sgn(v)}">${money(v)}</td>`; }).join("")}</tr>`).join("") +
+    `<tr><td class="l"><b>Total</b></td>${pols.map((p) => `<td class="${sgn(r.summary[p].all.net_pnl)}"><b>${money(r.summary[p].all.net_pnl)}</b></td>`).join("")}</tr></tbody>`;
+  const prev = $("tradepol").value;
+  $("tradepol").innerHTML = pols.filter((p) => p !== "hold").map((p) => `<option ${p === prev ? "selected" : ""}>${esc(p)}</option>`).join("");
+  $("tradepol").onchange = drawTrades;
+  drawTrades(); drawEquity();
+}
+
+function drawTrades() {
+  const r = S.run, p = $("tradepol").value, rows = (r.trades[p] || []).slice().reverse();
+  $("trades").innerHTML = `<thead><tr><th class="l">Day</th><th class="l">Side</th><th>Entry ET</th><th>Entry</th><th>Exit ET</th><th>Exit</th><th class="l">Exit by</th><th>Pts</th><th>Net $</th></tr></thead><tbody>` +
+    (rows.length ? rows.map((t) => `<tr><td class="l">${esc(t.day)}</td><td class="l" style="color:var(${t.side > 0 ? "--long" : "--short"})">${t.side > 0 ? "▲ long" : "▼ short"}</td>
+      <td>${etS(t.entry_ns / 1e9)}</td><td>${t.entry_px.toFixed(2)}</td><td>${etS(t.exit_ns / 1e9)}</td><td>${t.exit_px.toFixed(2)}</td>
+      <td class="l muted">${esc(t.reason === "jev" ? "signal" : t.reason)}</td><td>${t.points.toFixed(2)}</td><td class="${sgn(t.pnl)}">${money(t.pnl)}</td></tr>`).join("")
+      : `<tr><td class="l muted" colspan="9">No trades</td></tr>`) + "</tbody>";
+}
+
+function drawEquity() {
+  const r = S.run, box = $("eqchart");
+  box.innerHTML = "";
+  if (!r || !r.equity.length) { box.innerHTML = `<div class="empty">No equity data stored for this run.</div>`; return; }
+  const pols = Object.keys(r.equity[0].policies).sort(polSort);
+  // days laid end to end; each day's curve starts at the running total of the days before it
+  const pts = [], off = Object.fromEntries(pols.map((p) => [p, 0]));
+  r.equity.forEach((e, k) => {
+    const n = e.t.length, t0 = e.t[0], span = Math.max(1, e.t[n - 1] - t0);
+    for (let i = 0; i < n; i++) pts.push({ x: k + (e.t[i] - t0) / span * 0.98, t: e.t[i], day: e.day, mid: e.mid[i], v: Object.fromEntries(pols.map((p) => [p, off[p] + e.policies[p][i]])) });
+    for (const p of pols) off[p] += e.policies[p][n - 1];
+  });
+  $("eqlegend").innerHTML = pols.map((p) => `<span><span class="sw" style="background:${polColor(p)}"></span>${esc(p)}</span>`).join("");
+  const W = Math.max(320, box.clientWidth), H = 300, m = { l: 64, r: 96, t: 10, b: 24 };
+  const svg = el("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Cumulative P&L by policy" }, box);
+  const X = r.equity.length;
+  const x = (v) => m.l + v / X * (W - m.l - m.r);
+  let lo = 0, hi = 0;
+  for (const q of pts) for (const p of pols) { lo = Math.min(lo, q.v[p]); hi = Math.max(hi, q.v[p]); }
+  const pad = (hi - lo) * 0.06 || 10;
+  const y = (v) => m.t + (1 - (v - lo + pad) / (hi - lo + 2 * pad)) * (H - m.t - m.b);
+  yAxis(svg, niceTicks(lo - pad, hi + pad), y, m.l, W - m.r, (v) => money(v, 0));
+  r.equity.forEach((e, k) => {
+    if (k) el("line", { x1: x(k), x2: x(k), y1: m.t, y2: H - m.b, class: "sep" }, svg);
+    if (X <= 12 || k % Math.ceil(X / 12) === 0) el("text", { x: x(k + 0.49), y: H - 6, "text-anchor": "middle" }, svg).textContent = X > 6 ? e.day.slice(5) : e.day;
+  });
+  const ends = [];
+  for (const p of pols) {
+    const d = pts.map((q, i) => `${i ? "L" : "M"}${x(q.x).toFixed(1)},${y(q.v[p]).toFixed(1)}`).join("");
+    el("path", { d, fill: "none", stroke: polColor(p), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    ends.push({ p, v: pts[pts.length - 1].v[p] });
+  }
+  // direct labels at the right edge, nudged apart
+  ends.sort((a, b) => b.v - a.v);
+  let lastY = -1e9;
+  for (const e of ends) {
+    const yy = Math.max(y(e.v) + 4, lastY + 13); lastY = yy;
+    el("text", { x: W - m.r + 6, y: yy, class: "lbl" }, svg).textContent = `${e.p.replace(/\[.*$/, "")} ${money(e.v, 0)}`;
+  }
+  const cross = el("line", { class: "cross", y1: m.t, y2: H - m.b, visibility: "hidden" }, svg);
+  const dots = pols.map((p) => el("circle", { r: 4, fill: polColor(p), stroke: css("--surface"), "stroke-width": 2, visibility: "hidden" }, svg));
+  const hit = el("rect", { x: m.l, y: 0, width: W - m.l - m.r, height: H, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (ev) => {
+    const b = svg.getBoundingClientRect(), xv = ((ev.clientX - b.left) * W / b.width - m.l) / (W - m.l - m.r) * X;
+    let lo2 = 0, hi2 = pts.length - 1;
+    while (lo2 < hi2) { const mid = (lo2 + hi2) >> 1; if (pts[mid].x < xv) lo2 = mid + 1; else hi2 = mid; }
+    const q = pts[lo2], xx = x(q.x);
+    cross.setAttribute("x1", xx); cross.setAttribute("x2", xx); cross.setAttribute("visibility", "visible");
+    pols.forEach((p, i) => { dots[i].setAttribute("cx", xx); dots[i].setAttribute("cy", y(q.v[p])); dots[i].setAttribute("visibility", "visible"); });
+    showTip(`<b>${esc(q.day)} · ${etS(q.t)} ET</b><div class="kv"><span>Mid</span><b>${q.mid.toFixed(2)}</b></div>` +
+      pols.slice().sort((a, b) => q.v[b] - q.v[a]).map((p) => `<div class="kv"><span><span class="sw" style="background:${polColor(p)}"></span>${esc(p)}</span><b>${money(q.v[p])}</b></div>`).join(""), ev);
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); hideTip(); });
+}
+
+function redraw() { if (S.overview) drawDay(); if (S.run) drawEquity(); }
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(redraw, 150); });
+
+// ---------------------------------------------------------------- boot
+(async function boot() {
+  paintTheme();
+  S.env = await api("/api/bt/env");
+  if (!$("path").value) $("path").value = S.env.csv_default;
+  $("csvdir").textContent = S.env.folders.csv;
+  $("envnote").textContent = S.env.typesafe_key ? "TypeSafe key found" : "no TypeSafe key: baselines only";
+  initForm();
+  await Promise.all([loadDays(), loadRuns()]);
+  for (const j of await api("/api/bt/jobs")) if (j.status === "running" && !following[j.kind]) follow(j, j.kind);
+  const last = store.get("run", null);
+  const pick = S.runs.find((r) => r.run_id === last) || S.runs[0];
+  if (pick) openRun(pick.run_id);
+})();
+</script>
+</body>
+</html>

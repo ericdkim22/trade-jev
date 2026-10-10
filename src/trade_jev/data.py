@@ -24,6 +24,7 @@ from trade_jev import ROOT
 
 TICK = 0.25
 POINT_VALUE = 20.0  # NQ: $20 / point  →  $5 / tick
+MICRO_POINT_VALUE = 2.0  # MNQ: $2 / point  →  $0.50 / tick
 LEVELS = 10
 ET = ZoneInfo("America/New_York")
 
@@ -31,14 +32,27 @@ ET = ZoneInfo("America/New_York")
 DATA_DIR = Path(os.environ.get("TRADE_JEV_DATA", ROOT / "data" / "databento")).expanduser()
 # Days recorded by the live runner (trade_jev.live), same file format. Gitignored.
 LIVE_DIR = ROOT / "data" / "live"
+# Days converted from CSV tick exports (trade_jev.ingest), same file format. Gitignored.
+CSV_DIR = ROOT / "data" / "csv"
 
-_NAME = re.compile(r"GLBX\.MDP3__(?P<sym>\w+)__mbp-10__rth__(?P<day>\d{4}-\d{2}-\d{2})__\w+\.parquet")
+_NAME = re.compile(r"(?P<src>[\w.]+?)__(?P<sym>\w+)__mbp-10__rth__(?P<day>\d{4}-\d{2}-\d{2})__\w+\.parquet")
+
+
+def point_value(symbol: str) -> float:
+    """$ per point for one contract: MNQ (micro) or NQ (E-mini)."""
+    return MICRO_POINT_VALUE if symbol.upper().startswith("MNQ") else POINT_VALUE
+
+
+def instrument_name(symbol: str) -> str:
+    if symbol.upper().startswith("MNQ"):
+        return "Micro E-mini Nasdaq-100 futures, tick size 0.25, $0.50 per tick"
+    return "Nasdaq-100 E-mini futures, tick size 0.25, $5 per tick"
 
 
 def list_days(data_dir: Path | None = None) -> dict[str, tuple[str, Path]]:
     """{'2026-06-23': ('NQU6', path)} for every non-empty cached day.
-    By default: live recordings, overridden by DATA_DIR files for the same day."""
-    dirs = [data_dir] if data_dir else [LIVE_DIR, DATA_DIR]
+    By default: live recordings, then CSV imports, then DATA_DIR files (a later folder wins)."""
+    dirs = [data_dir] if data_dir else [LIVE_DIR, CSV_DIR, DATA_DIR]
     out: dict[str, tuple[str, Path]] = {}
     for p in [p for d in dirs for p in sorted(d.glob("*.parquet"))]:
         m = _NAME.fullmatch(p.name)
@@ -70,6 +84,7 @@ class Day:
     cum_delta: np.ndarray  # int64, cumulative trade_delta per row
     book_rows: np.ndarray  # row indices that have a full book below
     books: np.ndarray     # (len(book_rows), 4, LEVELS): bid_px, bid_sz, ask_px, ask_sz (px in ticks)
+    point_value: float = POINT_VALUE  # $ per point (MNQ: 2, NQ: 20)
 
     def row_at(self, t_ns: int | np.ndarray) -> np.ndarray | int:
         """Index of the last row with ts <= t (no look-ahead). -1 if before first row."""
@@ -124,6 +139,7 @@ def load_day(day: str, decision_times_ns, data_dir: Path | None = None) -> Day:
         cum_delta=np.cumsum(np.concatenate(deltas)),
         book_rows=book_rows,
         books=np.concatenate(books) if books else np.zeros((0, 4, LEVELS), np.int64),
+        point_value=point_value(symbol),
     )
 
 

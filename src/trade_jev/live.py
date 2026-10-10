@@ -37,7 +37,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from trade_jev import ROOT
-from trade_jev.data import (ET, LEVELS, LIVE_DIR, TICK, Day, decision_grid, et_to_ns, list_days,
+from trade_jev.data import (ET, LEVELS, LIVE_DIR, TICK, Day, decision_grid, et_to_ns, list_days, point_value,
                             ns_to_et, secs)
 from trade_jev.encode import LOOKBACKS, Context
 from trade_jev.harness import Book, Config, DayResult
@@ -62,6 +62,7 @@ class LiveDay:
 
     def __init__(self, day: str, symbol: str, cap: int = 1 << 16):
         self.day, self.symbol = day, symbol
+        self.point_value = point_value(symbol)
         self.n = 0
         self._ts = np.empty(cap, np.int64)
         self._bid = np.empty(cap, np.int32)
@@ -677,7 +678,7 @@ class Session:
             "speed": getattr(self.source, "speed", None),
             "settings": {**asdict(g), "cadence_s": c.cadence_s, "latency_ms": c.latency_ms,
                          "commission": c.commission, "start_et": c.start_et, "end_et": c.end_et},
-            "tick": TICK, "point_value": 20.0,
+            "tick": TICK, "point_value": e.day.point_value,
             "jev": None if not e.jev_name else {
                 "name": e.jev_name, "stored": not e.real_jev, "calls": e.jev_calls, "errors": e.guard.errors,
                 "avg_ms": round(float(np.mean(e.jev_ms)), 0) if e.jev_ms else None,

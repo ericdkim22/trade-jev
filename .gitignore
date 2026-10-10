@@ -5,6 +5,9 @@ __pycache__/
 
 # licensed market data (see data/DATA.md); only the synthetic sample is committed
 data/databento/
+# CSV tick exports converted by trade_jev.ingest, and the synthetic CSV demo
+data/csv/
+data/csv-sample/
 
 # local run outputs: raw Jev answers incl. the order books Jev saw
 # (share with scripts/publish_run.py → results/, which is committed)
