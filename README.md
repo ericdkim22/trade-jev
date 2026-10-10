@@ -157,6 +157,13 @@ The 59-day sample's day list is in `research/history-sample-days.txt`.
 - New ideas come from the free grid search (the best untried setting on all days so far, one a night, at most 10 being
   tested) and from any new encoder added to `encode.py`. To add your own:
   `uv run python -m trade_jev.research add --encoder raw_l10 --stop-ticks 100 --target-ticks 50 --note "tighter exits"`.
+- Every idea is also replayed on the MarketTick history sample (`research/history-sample-days.txt`, one
+  `hist-<input>` backtest per Jev input; `python -m trade_jev.research history` runs all missing ones). An idea that
+  loses money there and does worse than the live strategy on 40+ days is retired without waiting for live days.
+- Exits beyond stop / target: `--max-hold-s` (time stop, closes at market) and `--breakeven-ticks` (once that far in
+  profit, the stop moves to the entry price), in backtests, replays, the live session and research ideas.
+- Jev inputs: `raw_l10` (live), `features`, `topbook` (best level only), `context` (features + session position,
+  opening range, 5/15-minute trend, volatility, time of day).
 - Promoting a "worked" idea to the live session is left to you.
 
 ## 7) Test
