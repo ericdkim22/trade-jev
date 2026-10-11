@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  try { if (localStorage.getItem("jev-viewer-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+</script>
+<title>MNQ Alpha</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --ring: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.04);
+  --long: #2a78d6; --short: #eb6834; --good: #006300; --bad: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+    --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --ring: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.05);
+  --long: #3987e5; --short: #d95926; --good: #0ca30c; --bad: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 64px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+h3 { font-size: 13px; margin: 0; font-weight: 600; }
+.nav { display: flex; gap: 4px; }
+.nav a { color: var(--ink-2); text-decoration: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 10px; font-size: 13px; }
+.nav a:hover { background: var(--wash); }
+.nav a[aria-current="page"] { color: var(--ink); border-color: var(--ring); background: var(--surface); font-weight: 600; }
+.btn, select { border: 1px solid var(--ring); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 13px; }
+.btn { cursor: pointer; color: var(--ink-2); margin-left: auto; }
+.btn:hover { background: var(--wash); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
+.filters label { display: flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: 13px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 10px 14px; }
+.tile .k { color: var(--ink-2); font-size: 12px; }
+.tile .v { font-size: 24px; font-weight: 600; margin-top: 2px; }
+.tile .s { color: var(--muted); font-size: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 14px; margin-bottom: 14px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px; min-width: 0; margin-bottom: 14px; }
+.grid2 .card { margin-bottom: 0; }
+.card .head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 6px; }
+.card .note { color: var(--muted); font-size: 12px; }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--ink-2); margin-left: auto; }
+.legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 4px; border-radius: 1px; }
+.legend i.box { width: 10px; height: 10px; border-radius: 2px; }
+svg.chart { display: block; width: 100%; overflow: visible; }
+svg.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { text-align: right; color: var(--ink-2); font-weight: 600; padding: 5px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); color: var(--ink-2); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td { background: var(--wash); }
+tr.sel td { color: var(--ink); font-weight: 600; background: var(--wash); }
+details { margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+details summary { cursor: pointer; color: var(--muted); }
+#tip { position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--ring); border-radius: 8px;
+       padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; z-index: 10; min-width: 120px; }
+#tip .t { color: var(--muted); margin-bottom: 2px; }
+#tip .r { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+#tip .r b { color: var(--ink); font-variant-numeric: tabular-nums; }
+#tip .r span { color: var(--ink-2); }
+#tip .r i { display: inline-block; width: 10px; height: 2px; margin-right: 4px; vertical-align: middle; }
+.empty { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 18px; color: var(--ink-2); }
+.empty pre { background: var(--wash); border-radius: 8px; padding: 10px; overflow-x: auto; color: var(--ink); }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.loading { opacity: .5; transition: opacity .15s; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MNQ Alpha</h1>
+    <nav class="nav"><a href="/">Replay</a><a href="/live">Live</a><a href="/alpha" aria-current="page">Alpha</a><a href="/docs">Docs</a></nav>
+    <button class="btn" id="theme" aria-label="Toggle dark mode"></button>
+  </header>
+
+  <div id="empty" class="empty" hidden>
+    <p><strong>No alpha runs yet.</strong> Build features and train a model; each run in <code>runs/alpha/</code> shows up here.</p>
+    <pre>uv run python -m trade_jev.alpha build --data C:\Transfer
+uv run python -m trade_jev.alpha train --horizon 60</pre>
+  </div>
+
+  <div id="app" hidden>
+    <div class="filters">
+      <label>Run <select id="run"></select></label>
+      <label>Threshold <select id="q"></select></label>
+      <label>Day <select id="day"></select></label>
+      <span class="note" id="runnote"></span>
+    </div>
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card">
+      <div class="head"><h3>Cumulative net P&amp;L</h3><span class="note" id="eqnote"></span></div>
+      <svg class="chart" id="equity" height="230"></svg>
+      <details><summary>Daily P&amp;L table</summary><div class="tablewrap"><table id="eqtable"></table></div></details>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="head"><h3>Rank IC by day</h3><span class="note">out of sample, prediction vs realised move</span></div>
+        <svg class="chart" id="ic" height="200"></svg>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Realised move by prediction decile</h3><span class="note">mean ticks, all OOS rows</span></div>
+        <svg class="chart" id="dec" height="200"></svg>
+        <details><summary>Decile table</summary><div class="tablewrap"><table id="dectable"></table></div></details>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head"><h3>Thresholds</h3><span class="note">1 MNQ, cross the spread in and out, commission both sides. Click a row to select it.</span></div>
+      <div class="tablewrap"><table id="bt"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="head"><h3 id="dayttl">Day</h3>
+        <span class="legend"><span><i style="background:var(--ink-2)"></i>Mid</span>
+          <span><i class="box" style="background:var(--long)"></i>Long</span>
+          <span><i class="box" style="background:var(--short)"></i>Short</span></span></div>
+      <svg class="chart" id="dayprice" height="230"></svg>
+      <div class="head" style="margin-top:8px"><h3>Prediction</h3><span class="note" id="cutnote"></span></div>
+      <svg class="chart" id="daypred" height="130"></svg>
+      <details><summary>Trades this day</summary><div class="tablewrap"><table id="daytrades"></table></div></details>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="head"><h3>Feature importance</h3><span class="note">mean share of gain across folds</span></div>
+        <svg class="chart" id="imp" height="400"></svg>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Per day</h3></div>
+        <div class="tablewrap"><table id="folds"></table></div>
+      </div>
+    </div>
+  </div>
+</main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const etFmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
+const etSec = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const money = (v) => v == null ? "–" : (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const num = (v, d = 2) => v == null ? "–" : (+v).toFixed(d).replace("-", "−");
+const signed = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + num(v, d);
+
+let S = { runs: [], run: null, q: null, day: null, dayData: null };
+
+// ------------------------------------------------------------ svg helpers
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function text(parent, x, y, s, anchor = "start", extra = {}) {
+  const t = el("text", { x, y, "text-anchor": anchor, ...extra }, parent);
+  t.textContent = s;
+  return t;
+}
+function niceTicks(lo, hi, n = 5) {
+  if (!(hi > lo)) { const p = Math.abs(lo) || 1; lo -= p * 0.1; hi += p * 0.1; }
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return { ticks: out, lo: Math.min(lo, out[0]), hi: Math.max(hi, out[out.length - 1]) };
+}
+function frame(svg, m) {
+  svg.replaceChildren();
+  const W = svg.clientWidth || svg.parentNode.clientWidth, H = +svg.getAttribute("height");
+  return { W, H, x0: m.l, x1: W - m.r, y0: H - m.b, y1: m.t };
+}
+function yAxis(svg, f, lo, hi, fmt, n = 4) {
+  const t = niceTicks(lo, hi, n);
+  const y = (v) => f.y0 - (v - t.lo) / (t.hi - t.lo) * (f.y0 - f.y1);
+  for (const v of t.ticks) {
+    el("line", { x1: f.x0, x2: f.x1, y1: y(v), y2: y(v), stroke: css("--grid"), "stroke-width": 1 }, svg);
+    text(svg, f.x0 - 6, y(v) + 4, fmt(v), "end");
+  }
+  return y;
+}
+function barPath(x, w, yBase, yEnd, r = 4) {
+  // rounded at the data end, square at the baseline
+  const up = yEnd < yBase, h = Math.abs(yEnd - yBase);
+  r = Math.min(r, w / 2, h);
+  if (h < 0.5) return "";
+  return up
+    ? `M${x},${yBase}V${yEnd + r}Q${x},${yEnd} ${x + r},${yEnd}H${x + w - r}Q${x + w},${yEnd} ${x + w},${yEnd + r}V${yBase}Z`
+    : `M${x},${yBase}V${yEnd - r}Q${x},${yEnd} ${x + r},${yEnd}H${x + w - r}Q${x + w},${yEnd} ${x + w},${yEnd - r}V${yBase}Z`;
+}
+function linePath(xs, ys, x, y) {
+  let d = "", pen = false;
+  for (let i = 0; i < xs.length; i++) {
+    if (ys[i] == null) { pen = false; continue; }
+    d += (pen ? "L" : "M") + x(xs[i]).toFixed(1) + "," + y(ys[i]).toFixed(1);
+    pen = true;
+  }
+  return d;
+}
+
+// ------------------------------------------------------------ tooltip
+const tip = $("tip");
+function showTip(ev, title, rows) {
+  tip.replaceChildren();
+  const t = document.createElement("div"); t.className = "t"; t.textContent = title; tip.appendChild(t);
+  for (const [label, value, color] of rows) {
+    const r = document.createElement("div"); r.className = "r";
+    const l = document.createElement("span");
+    if (color) { const i = document.createElement("i"); i.style.background = color; l.appendChild(i); }
+    l.appendChild(document.createTextNode(label));
+    const b = document.createElement("b"); b.textContent = value;
+    r.append(l, b); tip.appendChild(r);
+  }
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, yy = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (yy + h > innerHeight - 8) yy = ev.clientY - h - 14;
+  tip.style.left = x + "px"; tip.style.top = yy + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+
+// ------------------------------------------------------------ charts
+function nearest(xs, v) {
+  let lo = 0, hi = xs.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] < v) lo = m; else hi = m; }
+  return Math.abs(xs[lo] - v) <= Math.abs(xs[hi] - v) ? lo : hi;
+}
+
+// One-axis line chart with a snapping crosshair. series: [{ys, color, name, fmt}]
+function lineChart(svg, { xs, series, yFmt, xFmt, xTicks, title, extra, hlines = [], vlines = [], markers = [], onX, m }) {
+  m = m || { l: 56, r: 12, t: 8, b: 22 };
+  const f = frame(svg, m);
+  if (!xs.length) { text(svg, f.W / 2, f.H / 2, "no data", "middle"); return null; }
+  let lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const v of s.ys) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const h of hlines) { lo = Math.min(lo, h.y); hi = Math.max(hi, h.y); }
+  for (const mk of markers) { lo = Math.min(lo, mk.y); hi = Math.max(hi, mk.y); }
+  const y = yAxis(svg, f, lo, hi, yFmt);
+  const xa = xs[0], xb = xs[xs.length - 1] === xa ? xa + 1 : xs[xs.length - 1];
+  const x = (v) => f.x0 + (v - xa) / (xb - xa) * (f.x1 - f.x0);
+  for (const v of vlines) el("line", { x1: x(v), x2: x(v), y1: f.y1, y2: f.y0, stroke: css("--grid"), "stroke-width": 1 }, svg);
+  for (const tv of xTicks(xa, xb)) {
+    text(svg, x(tv.v), f.H - 6, tv.label, "middle");
+  }
+  for (const h of hlines) {
+    el("line", { x1: f.x0, x2: f.x1, y1: y(h.y), y2: y(h.y), stroke: h.color || css("--muted"), "stroke-width": 1 }, svg);
+    if (h.label) text(svg, f.x1 + 4, y(h.y) + 4, h.label);
+  }
+  for (const s of series) el("path", { d: linePath(xs, s.ys, x, y), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  for (const mk of markers) {
+    const cx = x(mk.x), cy = y(mk.y), up = mk.dir > 0, sz = 6;
+    el("path", { d: up ? `M${cx},${cy - sz}L${cx + sz},${cy + sz * .8}L${cx - sz},${cy + sz * .8}Z` : `M${cx},${cy + sz}L${cx + sz},${cy - sz * .8}L${cx - sz},${cy - sz * .8}Z`,
+                 fill: up ? css("--long") : css("--short"), stroke: css("--surface"), "stroke-width": 2 }, svg);
+  }
+  const cross = el("line", { y1: f.y1, y2: f.y0, stroke: css("--ink-2"), "stroke-width": 1, visibility: "hidden" }, svg);
+  const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: css("--surface"), "stroke-width": 2, visibility: "hidden" }, svg));
+  const hit = el("rect", { x: f.x0, y: 0, width: Math.max(0, f.x1 - f.x0), height: f.H, fill: "transparent" }, svg);
+  const api = {
+    show(i, ev) {
+      const cx = x(xs[i]);
+      cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+      series.forEach((s, k) => {
+        const v = s.ys[i];
+        dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
+        if (v != null) { dots[k].setAttribute("cx", cx); dots[k].setAttribute("cy", y(v)); }
+      });
+      if (ev) showTip(ev, title(i), [...series.map((s) => [s.name, (s.fmt || yFmt)(s.ys[i]), s.color]), ...(extra ? extra(i) : [])]);
+    },
+    hide() { cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); },
+    xs,
+  };
+  hit.addEventListener("pointermove", (ev) => {
+    const r = svg.getBoundingClientRect();
+    const v = xa + (ev.clientX - r.left - f.x0) / (f.x1 - f.x0) * (xb - xa);
+    const i = nearest(xs, v);
+    api.show(i, ev);
+    if (onX) onX(xs[i], api);
+  });
+  hit.addEventListener("pointerleave", () => { api.hide(); hideTip(); if (onX) onX(null, api); });
+  return api;
+}
+
+// Vertical bars around zero, positive blue / negative orange.
+function barChart(svg, { cats, vals, fmt, label, tipRows, catFmt = (c) => c }) {
+  const f = frame(svg, { l: 48, r: 8, t: 8, b: 22 });
+  if (!vals.length) { text(svg, f.W / 2, f.H / 2, "no data", "middle"); return; }
+  const lo = Math.min(0, ...vals.filter((v) => v != null)), hi = Math.max(0, ...vals.filter((v) => v != null));
+  const y = yAxis(svg, f, lo, hi, fmt);
+  const n = vals.length, band = (f.x1 - f.x0) / n, w = Math.max(2, Math.min(36, band - 2));
+  const every = Math.ceil(n / Math.max(1, Math.floor((f.x1 - f.x0) / 56)));
+  vals.forEach((v, i) => {
+    const bx = f.x0 + i * band + (band - w) / 2;
+    if (v != null) el("path", { d: barPath(bx, w, y(0), y(v)), fill: v >= 0 ? css("--long") : css("--short") }, svg);
+    if (i % every === 0) text(svg, bx + w / 2, f.H - 6, catFmt(cats[i]), "middle");
+    const hit = el("rect", { x: f.x0 + i * band, y: f.y1, width: band, height: f.y0 - f.y1, fill: "transparent", tabindex: 0 }, svg);
+    const on = (ev) => { hit.setAttribute("fill", css("--wash")); showTip(ev, label(i), tipRows(i)); };
+    hit.addEventListener("pointermove", on);
+    hit.addEventListener("focus", () => { const r = hit.getBoundingClientRect(); on({ clientX: r.right, clientY: r.top }); });
+    const off = () => { hit.setAttribute("fill", "transparent"); hideTip(); };
+    hit.addEventListener("pointerleave", off); hit.addEventListener("blur", off);
+  });
+  el("line", { x1: f.x0, x2: f.x1, y1: y(0), y2: y(0), stroke: css("--muted"), "stroke-width": 1 }, svg);
+}
+
+// Horizontal bars, one series.
+function hbarChart(svg, { cats, vals, fmt }) {
+  const rowH = 16, labelW = Math.min(170, (svg.clientWidth || 400) * 0.42);
+  svg.setAttribute("height", Math.max(60, cats.length * rowH + 8));
+  const f = frame(svg, { l: labelW, r: 44, t: 4, b: 4 });
+  const max = Math.max(...vals, 1e-9);
+  cats.forEach((c, i) => {
+    const yy = f.y1 + i * rowH, w = (vals[i] / max) * (f.x1 - f.x0);
+    text(svg, f.x0 - 6, yy + 11, c, "end");
+    if (w > 0.5) {
+      const r = Math.min(4, w, (rowH - 4) / 2);
+      el("path", { d: `M${f.x0},${yy + 2}H${f.x0 + w - r}Q${f.x0 + w},${yy + 2} ${f.x0 + w},${yy + 2 + r}V${yy + rowH - 2 - r}Q${f.x0 + w},${yy + rowH - 2} ${f.x0 + w - r},${yy + rowH - 2}H${f.x0}Z`, fill: css("--long") }, svg);
+    }
+    text(svg, f.x0 + w + 4, yy + 11, fmt(vals[i]));
+  });
+}
+
+// ------------------------------------------------------------ tables
+function table(tbl, cols, rows, { onPick, selected } = {}) {
+  tbl.replaceChildren();
+  const thead = document.createElement("thead"), tr = document.createElement("tr");
+  for (const c of cols) { const th = document.createElement("th"); th.textContent = c.label; tr.appendChild(th); }
+  thead.appendChild(tr); tbl.appendChild(thead);
+  const tb = document.createElement("tbody");
+  rows.forEach((r, i) => {
+    const row = document.createElement("tr");
+    if (onPick) { row.className = "pick" + (selected && selected(r) ? " sel" : ""); row.onclick = () => onPick(r); }
+    for (const c of cols) {
+      const td = document.createElement("td");
+      const v = c.get(r, i);
+      td.textContent = v;
+      if (c.tone) { const s = c.tone(r); if (s) td.className = s > 0 ? "pos" : "neg"; }
+      row.appendChild(td);
+    }
+    tb.appendChild(row);
+  });
+  tbl.appendChild(tb);
+}
+
+// ------------------------------------------------------------ data
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.json();
+}
+function setOptions(sel, items, value) {
+  sel.replaceChildren();
+  for (const [v, label] of items) { const o = document.createElement("option"); o.value = v; o.textContent = label; sel.appendChild(o); }
+  if (value != null) sel.value = value;
+}
+function saveURL() {
+  const p = new URLSearchParams({ run: S.run?.id || "", q: S.q ?? "", day: S.day || "" });
+  history.replaceState(null, "", "?" + p);
+}
+
+async function loadRun(id) {
+  document.body.classList.add("loading");
+  S.run = await getJSON("/api/alpha/run?id=" + encodeURIComponent(id));
+  document.body.classList.remove("loading");
+  const qs = S.run.backtest.map((b) => b.q);
+  const want = new URLSearchParams(location.search);
+  S.q = qs.includes(+want.get("q")) ? +want.get("q") : (qs.includes(0.9) ? 0.9 : qs[0]);
+  setOptions($("q"), qs.map((q) => [q, `top ${Math.round((1 - q) * 100)}% |pred| (q ${q})`]), S.q);
+  S.day = S.run.days.includes(want.get("day")) ? want.get("day") : S.run.days[S.run.days.length - 1];
+  setOptions($("day"), S.run.days.map((d) => [d, d]), S.day);
+  const c = S.run.config || {};
+  $("runnote").textContent = `horizon ${S.run.horizon_s}s · ${S.run.summary.oos_days} OOS days · $${c.commission ?? "?"}/side`;
+  renderRun();
+  await loadDay();
+}
+async function loadDay() {
+  saveURL();
+  if (!S.day) return;
+  $("dayprice").classList.add("loading"); $("daypred").classList.add("loading");
+  S.dayData = await getJSON(`/api/alpha/day?id=${encodeURIComponent(S.run.id)}&day=${S.day}&q=${S.q}`);
+  $("dayprice").classList.remove("loading"); $("daypred").classList.remove("loading");
+  renderDay();
+}
+
+// ------------------------------------------------------------ render
+function tile(k, v, s, tone) {
+  const d = document.createElement("div"); d.className = "tile";
+  const a = document.createElement("div"); a.className = "k"; a.textContent = k;
+  const b = document.createElement("div"); b.className = "v" + (tone ? (tone > 0 ? " pos" : " neg") : ""); b.textContent = v;
+  const c = document.createElement("div"); c.className = "s"; c.textContent = s || "";
+  d.append(a, b, c); return d;
+}
+function renderTiles() {
+  const s = S.run.summary, bt = S.run.backtest.find((b) => b.q === S.q) || {};
+  $("tiles").replaceChildren(
+    tile("Rank IC (OOS)", signed(s.rank_ic, 3), `daily mean ${signed(s.rank_ic_mean_daily, 3)}`),
+    tile("IC t-stat", num(s.rank_ic_t_stat, 1), `${s.pos_ic_days} days positive`),
+    tile("Sign hit rate", s.sign_hit == null ? "–" : (s.sign_hit * 100).toFixed(1) + "%", `${(s.oos_rows || 0).toLocaleString()} OOS rows`),
+    tile("Net P&L", money(bt.total_pnl), `${bt.trades ?? 0} trades · ${bt.trades_per_day ?? 0}/day`, bt.total_pnl > 0 ? 1 : bt.total_pnl < 0 ? -1 : 0),
+    tile("Avg trade", bt.avg_pnl == null ? "–" : (bt.avg_pnl < 0 ? "−$" : "$") + Math.abs(bt.avg_pnl).toFixed(2), `${signed(bt.avg_ticks_gross)} ticks gross · hit ${bt.hit == null ? "–" : (bt.hit * 100).toFixed(0) + "%"}`),
+    tile("Sharpe (daily, ann.)", num(bt.daily_sharpe_ann, 2), `${bt.pos_days ?? "–"} days positive`),
+  );
+}
+function renderEquity() {
+  const t = S.run.trades[String(S.q)] || { ts: [], day: [], pnl: [], dir: [], ticks: [] };
+  const xs = t.pnl.map((_, i) => i + 1), cum = [];
+  t.pnl.reduce((a, v, i) => (cum[i] = a + v), 0);
+  const vlines = [];
+  for (let i = 1; i < t.day.length; i++) if (t.day[i] !== t.day[i - 1]) vlines.push(i + 0.5);
+  $("eqnote").textContent = `${t.pnl.length} trades, in time order; vertical lines separate days`;
+  lineChart($("equity"), {
+    xs, series: [{ ys: cum, color: css("--long"), name: "Cumulative", fmt: money }], yFmt: money,
+    xTicks: (a, b) => { const st = Math.max(1, niceTicks(a, b, 6).ticks[1] - niceTicks(a, b, 6).ticks[0]); const o = []; for (let v = Math.ceil(a / st) * st; v <= b; v += st) o.push({ v, label: v.toLocaleString() }); return o; },
+    title: (i) => `Trade ${xs[i]} · ${t.day[i]} ${etSec.format(new Date(t.ts[i]))} ET`,
+    extra: (i) => [["This trade", money(t.pnl[i])], ["Side", t.dir[i] > 0 ? "long" : "short"], ["Ticks (gross)", signed(t.ticks[i])]],
+    hlines: [{ y: 0 }], vlines,
+  });
+  const byDay = {};
+  t.day.forEach((d, i) => { (byDay[d] ||= { n: 0, pnl: 0 }); byDay[d].n++; byDay[d].pnl += t.pnl[i]; });
+  table($("eqtable"), [
+    { label: "Day", get: (r) => r[0] }, { label: "Trades", get: (r) => r[1].n },
+    { label: "Net P&L", get: (r) => money(r[1].pnl), tone: (r) => Math.sign(r[1].pnl) },
+  ], Object.entries(byDay));
+}
+function renderRun() {
+  renderTiles();
+  renderEquity();
+  const folds = S.run.folds;
+  barChart($("ic"), {
+    cats: folds.map((f) => f.day), vals: folds.map((f) => f.rank_ic), fmt: (v) => num(v, 2),
+    catFmt: (d) => d.slice(5), label: (i) => folds[i].day,
+    tipRows: (i) => [["Rank IC", signed(folds[i].rank_ic, 4)], ["IC", signed(folds[i].ic, 4)], ["Train days", folds[i].train_days]],
+  });
+  const dec = S.run.deciles;
+  barChart($("dec"), {
+    cats: dec.map((d) => d.decile), vals: dec.map((d) => d.fwd_mean_t), fmt: (v) => num(v, 1),
+    label: (i) => `Decile ${dec[i].decile}`,
+    tipRows: (i) => [["Realised", signed(dec[i].fwd_mean_t) + " ticks"], ["Predicted", signed(dec[i].pred_mean) + " ticks"], ["Up share", (dec[i].up_share * 100).toFixed(1) + "%"], ["Rows", dec[i].n.toLocaleString()]],
+  });
+  table($("dectable"), [
+    { label: "Decile", get: (r) => r.decile }, { label: "Rows", get: (r) => r.n.toLocaleString() },
+    { label: "Predicted (t)", get: (r) => signed(r.pred_mean) }, { label: "Realised (t)", get: (r) => signed(r.fwd_mean_t), tone: (r) => Math.sign(r.fwd_mean_t) },
+    { label: "Up share", get: (r) => (r.up_share * 100).toFixed(1) + "%" },
+  ], dec);
+  renderBacktest();
+  const imp = S.run.importance;
+  hbarChart($("imp"), { cats: imp.map((r) => r.feature), vals: imp.map((r) => r.gain), fmt: (v) => (v * 100).toFixed(1) + "%" });
+  table($("folds"), [
+    { label: "Day", get: (r) => r.day }, { label: "Train days", get: (r) => r.train_days },
+    { label: "Train rows", get: (r) => (r.train_rows || 0).toLocaleString() }, { label: "Trees", get: (r) => r.trees ?? "–" },
+    { label: "Rank IC", get: (r) => signed(r.rank_ic, 4), tone: (r) => Math.sign(r.rank_ic) },
+    { label: "Val. rank IC", get: (r) => signed(r.val_rank_ic, 4) },
+  ], folds, { onPick: (r) => { S.day = r.day; $("day").value = r.day; loadDay(); }, selected: (r) => r.day === S.day });
+}
+function renderBacktest() {
+  table($("bt"), [
+    { label: "Threshold", get: (r) => `top ${Math.round((1 - r.q) * 100)}% (q ${r.q})` },
+    { label: "Cut (ticks)", get: (r) => S.run.cuts ? num(S.run.cuts[String(r.q)], 2) : "–" },
+    { label: "Trades", get: (r) => r.trades }, { label: "Per day", get: (r) => r.trades_per_day ?? "–" },
+    { label: "Hit", get: (r) => r.hit == null ? "–" : (r.hit * 100).toFixed(1) + "%" },
+    { label: "Gross ticks/trade", get: (r) => signed(r.avg_ticks_gross) },
+    { label: "Net $/trade", get: (r) => r.avg_pnl == null ? "–" : signed(r.avg_pnl), tone: (r) => Math.sign(r.avg_pnl || 0) },
+    { label: "Net P&L", get: (r) => money(r.total_pnl), tone: (r) => Math.sign(r.total_pnl || 0) },
+    { label: "Sharpe", get: (r) => num(r.daily_sharpe_ann, 2) }, { label: "Days +", get: (r) => r.pos_days ?? "–" },
+  ], S.run.backtest, { onPick: (r) => setQ(r.q), selected: (r) => r.q === S.q });
+}
+function setQ(q) {
+  S.q = q; $("q").value = q;
+  renderTiles(); renderEquity(); renderBacktest(); loadDay();
+}
+function renderDay() {
+  const d = S.dayData;
+  const tr = d.trades;
+  const pnl = tr.pnl.reduce((a, b) => a + b, 0);
+  $("dayttl").textContent = `${d.day} · ${tr.ts.length} trades · ${money(pnl)}`;
+  $("cutnote").textContent = d.cut == null ? "" : `ticks over the next ${S.run.horizon_s}s; trades fire beyond ±${num(d.cut, 2)}`;
+  const timeTicks = (a, b) => {
+    const span = b - a, steps = [15, 30, 60, 120, 240].map((m) => m * 60000);
+    const st = steps.find((s) => span / s <= 8) || 480 * 60000, o = [];
+    for (let v = Math.ceil(a / st) * st; v <= b; v += st) o.push({ v, label: etFmt.format(new Date(v)) });
+    return o;
+  };
+  const charts = [];
+  const sync = (xv, src) => charts.forEach((c) => { if (c && c !== src) { if (xv == null) c.hide(); else c.show(nearest(c.xs, xv)); } });
+  const markers = tr.ts.map((t, i) => ({ x: t, y: tr.entry[i], dir: tr.dir[i] }));
+  const tradeAt = (t) => { const i = tr.ts.findIndex((x) => Math.abs(x - t) < 1500); return i; };
+  const extra = (i) => {
+    const k = tradeAt(d.ts[i]);
+    return k < 0 ? [] : [[tr.dir[k] > 0 ? "Long entry" : "Short entry", num(tr.entry[k], 2)], ["Trade P&L", money(tr.pnl[k])]];
+  };
+  charts.push(lineChart($("dayprice"), {
+    xs: d.ts, series: [{ ys: d.mid, color: css("--ink-2"), name: "Mid" }], yFmt: (v) => v.toFixed(2),
+    xTicks: timeTicks, title: (i) => etSec.format(new Date(d.ts[i])) + " ET", markers, extra, onX: sync,
+    m: { l: 64, r: 36, t: 10, b: 22 },
+  }));
+  charts.push(lineChart($("daypred"), {
+    xs: d.ts, series: [{ ys: d.pred, color: css("--long"), name: "Prediction", fmt: (v) => signed(v) + " t" }], yFmt: (v) => num(v, 1),
+    xTicks: timeTicks, title: (i) => etSec.format(new Date(d.ts[i])) + " ET",
+    hlines: d.cut == null ? [{ y: 0 }] : [{ y: 0 }, { y: d.cut, label: "+cut" }, { y: -d.cut, label: "−cut" }], onX: sync,
+    m: { l: 64, r: 36, t: 10, b: 22 },
+  }));
+  table($("daytrades"), [
+    { label: "Time (ET)", get: (r) => etSec.format(new Date(r.ts)) }, { label: "Side", get: (r) => r.dir > 0 ? "long" : "short" },
+    { label: "Entry", get: (r) => num(r.entry, 2) }, { label: "Exit", get: (r) => num(r.exit, 2) },
+    { label: "Ticks", get: (r) => signed(r.ticks) }, { label: "Net P&L", get: (r) => money(r.pnl), tone: (r) => Math.sign(r.pnl) },
+  ], tr.ts.map((ts, i) => ({ ts, dir: tr.dir[i], entry: tr.entry[i], exit: tr.exit[i], ticks: tr.ticks[i], pnl: tr.pnl[i] })));
+}
+function renderAll() { if (S.run) { renderRun(); if (S.dayData) renderDay(); } }
+
+// ------------------------------------------------------------ boot
+(async function () {
+  const t = $("theme");
+  const paint = () => { t.textContent = document.documentElement.dataset.theme === "dark" ? "☀ Light" : "☾ Dark"; };
+  t.onclick = () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("jev-viewer-theme", next); } catch (e) {}
+    paint(); renderAll();
+  };
+  paint();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderAll, 120); });
+
+  S.runs = await getJSON("/api/alpha/runs");
+  if (!S.runs.length) { $("empty").hidden = false; return; }
+  $("app").hidden = false;
+  setOptions($("run"), S.runs.map((r) => [r.id, `${r.id} · ${r.horizon_s}s · IC ${signed(r.rank_ic, 3)}`]));
+  const want = new URLSearchParams(location.search).get("run");
+  const id = S.runs.some((r) => r.id === want) ? want : S.runs[0].id;
+  $("run").value = id;
+  $("run").onchange = () => loadRun($("run").value);
+  $("q").onchange = () => setQ(+$("q").value);
+  $("day").onchange = () => { S.day = $("day").value; loadDay(); renderRun(); };
+  await loadRun(id);
+})().catch((e) => { const d = $("empty"); d.hidden = false; d.textContent = "Couldn't load alpha runs: " + e.message; });
+</script>
+</body>
+</html>

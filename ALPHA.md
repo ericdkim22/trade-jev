@@ -18,6 +18,17 @@ uv run python -m trade_jev.alpha train --horizon 30  --session rth        # othe
 uv run python -m trade_jev.alpha predict --model runs\alpha\<ts>\model --data D:\new_day --out signals.csv
 ```
 
+**Dashboard:** `uv run python -m trade_jev.view` → **Alpha** tab at http://localhost:8765/alpha. Pick a run, a threshold and a day to see:
+- headline stats
+- cumulative P&L
+- rank IC per day
+- the decile chart
+- the threshold table
+- the day's price with every trade and the prediction against its cut
+- feature importance
+
+Every run under `runs/alpha/` appears there. Links keep the view: `?run=<id>&q=0.9&day=<YYYY-MM-DD>`.
+
 No data handy? Write synthetic files in the same formats:
 `uv run python scripts/make_mnq_synthetic.py --out data/mnq_synth --days 7` (`--edge 0` makes data with nothing to find).
 

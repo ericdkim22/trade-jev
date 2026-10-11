@@ -88,3 +88,10 @@ def test_labels_are_forward_mid_moves(synth):
     ok = ~np.isnan(later) & df.fwd_30s_t.notna().to_numpy()
     assert ok.sum() > 1000
     np.testing.assert_allclose(df.fwd_30s_t[ok], (later[ok] - df.mid[ok]) / 0.25)
+
+
+def test_dashboard_rejects_paths_outside_runs():
+    from trade_jev.alpha import dashboard
+    for bad in ("", "..", "../runs", "a/b", "a\\b", "no-such-run"):
+        assert dashboard.run_dir(bad) is None
+        assert dashboard.run_payload(bad) is None

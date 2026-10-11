@@ -9,6 +9,7 @@ Serves viz/index.html (Replay), viz/live.html (Live), viz/docs.html (Docs) plus 
   GET /api/live/stream           server-sent events: tick (quote, ~4/s) and update (refetch state)
   GET /api/live/decision?i=<n>   the full state Jev saw for decision n
   POST /api/live/fill            log a manual fill {action, price, contracts, note}
+  GET /alpha, /api/alpha/...     MNQ ML alpha runs from runs/alpha/ (see trade_jev/alpha/dashboard.py)
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
+from trade_jev.alpha import dashboard as alpha
 from trade_jev.data import TICK, POINT_VALUE, secs
 from trade_jev.replay import RunDay, load_market, load_runs
 
@@ -198,6 +200,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._send((VIZ / "live.html").read_bytes(), "text/html; charset=utf-8")
             elif url.path in ("/docs", "/docs.html"):
                 self._send((VIZ / "docs.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path in ("/alpha", "/alpha.html"):
+                self._send((VIZ / "alpha.html").read_bytes(), "text/html; charset=utf-8")
+            elif url.path == "/api/alpha/runs":
+                self._json(alpha.list_runs())
+            elif url.path == "/api/alpha/run":
+                data = alpha.run_payload(q.get("id", ""))
+                if data is None:
+                    return self._error(HTTPStatus.NOT_FOUND, "unknown alpha run")
+                self._json(data)
+            elif url.path == "/api/alpha/day":
+                data = alpha.day_payload(q.get("id", ""), q.get("day", ""), float(q.get("q", 0.9)))
+                if data is None:
+                    return self._error(HTTPStatus.NOT_FOUND, "no such run / day")
+                self._json(data)
             elif url.path == "/api/live/state":
                 self._json(live.state(int(q.get("window", 3600))) if live else {"active": False})
             elif url.path == "/api/live/stream":
